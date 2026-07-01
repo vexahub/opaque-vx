@@ -14,7 +14,7 @@ use curve25519_dalek::scalar;
 use curve25519_dalek::traits::IsIdentity;
 use generic_array::GenericArray;
 use generic_array::typenum::U32;
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 use subtle::ConstantTimeEq;
 use zeroize::ZeroizeOnDrop;
 
@@ -43,7 +43,7 @@ impl Group for Curve25519 {
             .and_then(|bytes| NonIdentity::from_bytes(bytes.into()))
     }
 
-    fn random_sk<R: RngCore + CryptoRng>(rng: &mut R) -> Self::Sk {
+    fn random_sk<R: Rng + CryptoRng>(rng: &mut R) -> Self::Sk {
         // Sample 32 random bytes and then clamp, as described in https://cr.yp.to/ecdh.html
         let mut scalar_bytes = [0u8; 32];
         rng.fill_bytes(&mut scalar_bytes);

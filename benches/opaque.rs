@@ -10,8 +10,9 @@
 extern crate criterion;
 
 use criterion::Criterion;
-use opaque_ke::*;
-use rand::rngs::OsRng;
+use opaque_vx::*;
+use rand::rngs::SysRng;
+use rand_core::UnwrapErr;
 
 #[cfg(feature = "ristretto255")]
 static SUFFIX: &str = "ristretto255";
@@ -22,20 +23,20 @@ struct Default;
 
 #[cfg(feature = "ristretto255")]
 impl CipherSuite for Default {
-    type OprfCs = opaque_ke::Ristretto255;
-    type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-    type Ksf = opaque_ke::ksf::Identity;
+    type OprfCs = Ristretto255;
+    type KeyExchange = TripleDh<Ristretto255, sha2::Sha512>;
+    type Ksf = ksf::Identity;
 }
 
 #[cfg(not(feature = "ristretto255"))]
 impl CipherSuite for Default {
     type OprfCs = p256::NistP256;
-    type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-    type Ksf = opaque_ke::ksf::Identity;
+    type KeyExchange = TripleDh<p256::NistP256, sha2::Sha256>;
+    type Ksf = ksf::Identity;
 }
 
 fn server_setup(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
 
     c.bench_function(&format!("server setup ({SUFFIX})"), move |b| {
         b.iter(|| {
@@ -45,7 +46,7 @@ fn server_setup(c: &mut Criterion) {
 }
 
 fn client_registration_start(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let password = b"password";
 
     c.bench_function(&format!("client registration start ({SUFFIX})"), move |b| {
@@ -56,7 +57,7 @@ fn client_registration_start(c: &mut Criterion) {
 }
 
 fn server_registration_start(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -76,7 +77,7 @@ fn server_registration_start(c: &mut Criterion) {
 }
 
 fn client_registration_finish(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -109,7 +110,7 @@ fn client_registration_finish(c: &mut Criterion) {
 }
 
 fn server_registration_finish(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -142,7 +143,7 @@ fn server_registration_finish(c: &mut Criterion) {
 }
 
 fn client_login_start(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let password = b"password";
 
     c.bench_function(&format!("client login start ({SUFFIX})"), move |b| {
@@ -153,7 +154,7 @@ fn client_login_start(c: &mut Criterion) {
 }
 
 fn server_login_start_real(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -193,7 +194,7 @@ fn server_login_start_real(c: &mut Criterion) {
 }
 
 fn server_login_start_fake(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -215,7 +216,7 @@ fn server_login_start_fake(c: &mut Criterion) {
 }
 
 fn client_login_finish(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -265,7 +266,7 @@ fn client_login_finish(c: &mut Criterion) {
 }
 
 fn server_login_finish(c: &mut Criterion) {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let username = b"username";
     let password = b"password";
     let server_setup = ServerSetup::<Default>::new(&mut rng);

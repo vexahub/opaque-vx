@@ -13,11 +13,12 @@ use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::IsIdentity;
-use digest::core_api::BlockSizeUser;
+use digest::block_api::BlockSizeUser;
 use digest::{FixedOutput, HashMarker};
 use generic_array::GenericArray;
-use generic_array::typenum::{IsLess, IsLessOrEqual, U32, U256};
-use rand::{CryptoRng, RngCore};
+use generic_array::typenum::{IsGreaterOrEqual, IsLess, IsLessOrEqual, Prod, True, U2, U32, U256};
+use hybrid_array::Array;
+use rand::{CryptoRng, Rng, TryCryptoRng, TryRng};
 use voprf::Mode;
 use zeroize::ZeroizeOnDrop;
 
@@ -42,15 +43,19 @@ impl Group for Ristretto255 {
     }
 
     fn deserialize_take_pk(bytes: &mut &[u8]) -> Result<Self::Pk, ProtocolError> {
-        CompressedRistretto(bytes.take_array("public key")?.into())
+        CompressedRistretto(bytes.take_array::<U32>("public key")?.into())
             .decompress()
             .ok_or(ProtocolError::SerializationError)
             .and_then(NonIdentity::from_point)
     }
 
-    fn random_sk<R: RngCore + CryptoRng>(rng: &mut R) -> Self::Sk {
+    fn random_sk<R: Rng + CryptoRng>(rng: &mut R) -> Self::Sk {
         loop {
-            let scalar = Scalar::random(rng);
+            let mut bytes = [0u8; 64];
+
+            rng.fill_bytes(&mut bytes);
+
+            let scalar = Scalar::from_bytes_mod_order_wide(&bytes);
 
             if scalar != Scalar::ZERO {
                 break NonZeroScalar(scalar);
@@ -73,7 +78,7 @@ impl Group for Ristretto255 {
     }
 
     fn deserialize_take_sk(bytes: &mut &[u8]) -> Result<Self::Sk, ProtocolError> {
-        Scalar::from_canonical_bytes(bytes.take_array("secret key")?.into())
+        Scalar::from_canonical_bytes(bytes.take_array::<U32>("secret key")?.into())
             .into_option()
             .ok_or(ProtocolError::SerializationError)
             .and_then(NonZeroScalar::from_scalar)
@@ -149,7 +154,7 @@ where
 }
 
 impl voprf::CipherSuite for Ristretto255 {
-    const ID: &'static str = voprf::Ristretto255::ID;
+    const ID: &'static [u8] = voprf::Ristretto255::ID;
 
     type Group = <voprf::Ristretto255 as voprf::CipherSuite>::Group;
 
@@ -165,13 +170,17 @@ impl voprf::Group for Ristretto255 {
 
     type ScalarLen = <voprf::Ristretto255 as voprf::Group>::ScalarLen;
 
+    type SecurityLevel = <voprf::Ristretto255 as voprf::Group>::SecurityLevel;
+
     fn hash_to_curve<H>(
         input: &[&[u8]],
         dst: &[&[u8]],
     ) -> voprf::Result<Self::Elem, voprf::InternalError>
     where
         H: BlockSizeUser + Default + FixedOutput + HashMarker,
-        H::OutputSize: IsLess<U256> + IsLessOrEqual<H::BlockSize>,
+        H::OutputSize: IsLess<U256>
+            + IsLessOrEqual<H::BlockSize, Output = True>
+            + IsGreaterOrEqual<Prod<<Self as voprf::Group>::SecurityLevel, U2>, Output = True>,
     {
         <voprf::Ristretto255 as voprf::Group>::hash_to_curve::<H>(input, dst)
     }
@@ -182,7 +191,9 @@ impl voprf::Group for Ristretto255 {
     ) -> voprf::Result<Self::Scalar, voprf::InternalError>
     where
         H: BlockSizeUser + Default + FixedOutput + HashMarker,
-        H::OutputSize: IsLess<U256> + IsLessOrEqual<H::BlockSize>,
+        H::OutputSize: IsLess<U256>
+            + IsLessOrEqual<H::BlockSize, Output = True>
+            + IsGreaterOrEqual<Prod<<Self as voprf::Group>::SecurityLevel, U2>, Output = True>,
     {
         <voprf::Ristretto255 as voprf::Group>::hash_to_scalar::<H>(input, dst)
     }
@@ -195,7 +206,7 @@ impl voprf::Group for Ristretto255 {
         <voprf::Ristretto255 as voprf::Group>::identity_elem()
     }
 
-    fn serialize_elem(elem: Self::Elem) -> GenericArray<u8, Self::ElemLen> {
+    fn serialize_elem(elem: Self::Elem) -> Array<u8, Self::ElemLen> {
         <voprf::Ristretto255 as voprf::Group>::serialize_elem(elem)
     }
 
@@ -203,7 +214,7 @@ impl voprf::Group for Ristretto255 {
         <voprf::Ristretto255 as voprf::Group>::deserialize_elem(element_bits)
     }
 
-    fn random_scalar<R: RngCore + CryptoRng>(rng: &mut R) -> Self::Scalar {
+    fn random_scalar<R: TryRng + TryCryptoRng>(rng: &mut R) -> voprf::Result<Self::Scalar> {
         <voprf::Ristretto255 as voprf::Group>::random_scalar(rng)
     }
 
@@ -215,7 +226,7 @@ impl voprf::Group for Ristretto255 {
         <voprf::Ristretto255 as voprf::Group>::is_zero_scalar(scalar)
     }
 
-    fn serialize_scalar(scalar: Self::Scalar) -> GenericArray<u8, Self::ScalarLen> {
+    fn serialize_scalar(scalar: Self::Scalar) -> Array<u8, Self::ScalarLen> {
         <voprf::Ristretto255 as voprf::Group>::serialize_scalar(scalar)
     }
 

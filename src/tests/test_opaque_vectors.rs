@@ -10,13 +10,6 @@ use core::ops::Add;
 use std::vec;
 use std::vec::Vec;
 
-use digest::OutputSizeUser;
-use generic_array::typenum::Sum;
-use generic_array::{ArrayLength, GenericArray};
-use rand::RngCore;
-use rand::rngs::OsRng;
-use serde_json::Value;
-
 use crate::ciphersuite::{CipherSuite, KeGroup, OprfGroup, OprfHash};
 use crate::envelope::EnvelopeLen;
 use crate::errors::*;
@@ -30,8 +23,16 @@ use crate::messages::{
     RegistrationResponseLen, RegistrationUploadLen,
 };
 use crate::opaque::*;
+use crate::tests::decode;
 use crate::tests::mock_rng::CycleRng;
 use crate::*;
+use digest::OutputSizeUser;
+use generic_array::typenum::Sum;
+use generic_array::{ArrayLength, GenericArray};
+use rand::Rng;
+use rand::rngs::SysRng;
+use rand_core::UnwrapErr;
+use serde_json::Value;
 
 #[allow(non_snake_case)]
 #[derive(Debug)]
@@ -87,19 +88,15 @@ macro_rules! parse_default {
     };
 }
 
-fn decode(values: &Value, key: &str) -> Option<Vec<u8>> {
-    values[key].as_str().and_then(|s| hex::decode(s).ok())
-}
-
 fn populate_test_vectors<CS: CipherSuite>(values: &Value) -> OpaqueTestVectorParameters {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
 
     OpaqueTestVectorParameters {
         dummy_public_key: {
-            match decode(values, "client_public_key") {
-                Some(value) => value,
-                None => KeGroup::<CS>::serialize_sk(&KeGroup::<CS>::random_sk(&mut OsRng)).to_vec(),
-            }
+            decode(values, "client_public_key").unwrap_or_else(|| {
+                KeGroup::<CS>::serialize_sk(&KeGroup::<CS>::random_sk(&mut UnwrapErr(SysRng)))
+                    .to_vec()
+            })
         },
         dummy_masking_key: {
             match decode(values, "masking_key") {
@@ -151,8 +148,8 @@ where
     // RegistrationUpload: (KePk + Hash) + Envelope
     <KeGroup<CS> as Group>::PkLen: Add<OutputSize<OprfHash<CS>>>,
     Sum<<KeGroup<CS> as Group>::PkLen, OutputSize<OprfHash<CS>>>:
-        ArrayLength<u8> + Add<EnvelopeLen<CS>>,
-    RegistrationUploadLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<EnvelopeLen<CS>>,
+    RegistrationUploadLen<CS>: ArrayLength,
     // ServerRegistration = RegistrationUpload
 {
     let password_file = ServerRegistration::<CS>::finish(
@@ -185,12 +182,14 @@ fn tests() -> Result<(), ProtocolError> {
         serde_json::from_str(super::parser::rfc_to_json(super::rfc9807_vectors::VECTORS).as_str())
             .expect("Could not parse json");
 
+    std::eprintln!("{}", serde_json::to_string_pretty(&rfc).unwrap());
+
     #[cfg(feature = "ristretto255")]
     {
         struct Ristretto255Sha512NoKsf;
         impl CipherSuite for Ristretto255Sha512NoKsf {
-            type OprfCs = crate::Ristretto255;
-            type KeyExchange = TripleDh<crate::Ristretto255, sha2::Sha512>;
+            type OprfCs = Ristretto255;
+            type KeyExchange = TripleDh<Ristretto255, sha2::Sha512>;
             type Ksf = Identity;
         }
 
@@ -331,7 +330,7 @@ fn test_registration_response<CS: CipherSuite>(
 where
     // RegistrationResponse: KgPk + KePk
     <OprfGroup<CS> as voprf::Group>::ElemLen: Add<<KeGroup<CS> as Group>::PkLen>,
-    RegistrationResponseLen<CS>: ArrayLength<u8>,
+    RegistrationResponseLen<CS>: ArrayLength,
 {
     for parameters in tvs {
         let server_setup = ServerSetup::<CS>::deserialize(
@@ -370,8 +369,8 @@ where
     // RegistrationUpload: (KePk + Hash) + Envelope
     <KeGroup<CS> as Group>::PkLen: Add<OutputSize<OprfHash<CS>>>,
     Sum<<KeGroup<CS> as Group>::PkLen, OutputSize<OprfHash<CS>>>:
-        ArrayLength<u8> + Add<EnvelopeLen<CS>>,
-    RegistrationUploadLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<EnvelopeLen<CS>>,
+    RegistrationUploadLen<CS>: ArrayLength,
 {
     for parameters in tvs {
         let mut rng = CycleRng::new(parameters.blind_registration.to_vec());
@@ -417,7 +416,7 @@ where
     // CredentialRequest: KgPk + Ke1Message
     <CS::KeyExchange as KeyExchange>::KE1Message: Serialize,
     <OprfGroup<CS> as voprf::Group>::ElemLen: Add<Ke1MessageLen<CS>>,
-    CredentialRequestLen<CS>: ArrayLength<u8>,
+    CredentialRequestLen<CS>: ArrayLength,
 {
     for parameters in tvs {
         let client_login_start = [
@@ -444,18 +443,18 @@ where
     // RegistrationUpload: (KePk + Hash) + Envelope
     <KeGroup<CS> as Group>::PkLen: Add<OutputSize<OprfHash<CS>>>,
     Sum<<KeGroup<CS> as Group>::PkLen, OutputSize<OprfHash<CS>>>:
-        ArrayLength<u8> + Add<EnvelopeLen<CS>>,
-    RegistrationUploadLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<EnvelopeLen<CS>>,
+    RegistrationUploadLen<CS>: ArrayLength,
     // ServerRegistration = RegistrationUpload
     // CredentialResponseWithoutKeLen: (KgPk + Nonce) + MaskedResponse
     <OprfGroup<CS> as voprf::Group>::ElemLen: Add<NonceLen>,
     Sum<<OprfGroup<CS> as voprf::Group>::ElemLen, NonceLen>:
-        ArrayLength<u8> + Add<MaskedResponseLen<CS>>,
-    CredentialResponseWithoutKeLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<MaskedResponseLen<CS>>,
+    CredentialResponseWithoutKeLen<CS>: ArrayLength,
     // CredentialResponse: CredentialResponseWithoutKeLen + Ke2Message
     <CS::KeyExchange as KeyExchange>::KE2Message: Serialize,
     CredentialResponseWithoutKeLen<CS>: Add<Ke2MessageLen<CS>>,
-    CredentialResponseLen<CS>: ArrayLength<u8>,
+    CredentialResponseLen<CS>: ArrayLength,
 {
     for parameters in tvs {
         let server_setup = ServerSetup::<CS>::deserialize(
@@ -530,7 +529,7 @@ where
             ClientLogin::<CS>::start(&mut client_login_start_rng, &parameters.password)?;
 
         let client_login_finish_result = client_login_start_result.state.finish(
-            &mut OsRng,
+            &mut UnwrapErr(SysRng),
             &parameters.password,
             CredentialResponse::<CS>::deserialize(&parameters.KE2)?,
             ClientLoginFinishParameters::new(
@@ -576,8 +575,8 @@ where
     // RegistrationUpload: (KePk + Hash) + Envelope
     <KeGroup<CS> as Group>::PkLen: Add<OutputSize<OprfHash<CS>>>,
     Sum<<KeGroup<CS> as Group>::PkLen, OutputSize<OprfHash<CS>>>:
-        ArrayLength<u8> + Add<EnvelopeLen<CS>>,
-    RegistrationUploadLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<EnvelopeLen<CS>>,
+    RegistrationUploadLen<CS>: ArrayLength,
     // ServerRegistration = RegistrationUpload
 {
     for parameters in tvs {
@@ -644,12 +643,12 @@ where
     // CredentialResponseWithoutKeLen: (KgPk + Nonce) + MaskedResponse
     <OprfGroup<CS> as voprf::Group>::ElemLen: Add<NonceLen>,
     Sum<<OprfGroup<CS> as voprf::Group>::ElemLen, NonceLen>:
-        ArrayLength<u8> + Add<MaskedResponseLen<CS>>,
-    CredentialResponseWithoutKeLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<MaskedResponseLen<CS>>,
+    CredentialResponseWithoutKeLen<CS>: ArrayLength,
     // CredentialResponse: CredentialResponseWithoutKeLen + Ke2Message
     <CS::KeyExchange as KeyExchange>::KE2Message: Serialize,
     CredentialResponseWithoutKeLen<CS>: Add<Ke2MessageLen<CS>>,
-    CredentialResponseLen<CS>: ArrayLength<u8>,
+    CredentialResponseLen<CS>: ArrayLength,
 {
     for parameters in tvs {
         let server_setup = ServerSetup::<CS>::deserialize(

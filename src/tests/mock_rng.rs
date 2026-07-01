@@ -9,9 +9,10 @@
 use core::cmp::min;
 use std::vec::Vec;
 
-use rand::{CryptoRng, Error, RngCore};
+use core::convert::Infallible;
+use rand_core::{TryCryptoRng, TryRng};
 
-/// A simple implementation of `RngCore` for testing purposes.
+/// A simple implementation of `Rng` for testing purposes.
 ///
 /// This generates a cyclic sequence (i.e. cycles over an initial buffer)
 #[derive(Clone, Debug)]
@@ -38,29 +39,35 @@ fn rotate_left<T>(data: &mut [T], steps: usize) {
     data.reverse();
 }
 
-impl RngCore for CycleRng {
-    fn next_u32(&mut self) -> u32 {
-        unimplemented!()
+impl TryRng for CycleRng {
+    type Error = Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        let mut buf = [0u8; 4];
+
+        self.try_fill_bytes(&mut buf)?;
+
+        Ok(u32::from_le_bytes(buf))
     }
 
-    #[inline]
-    fn next_u64(&mut self) -> u64 {
-        unimplemented!()
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        let mut buf = [0u8; 8];
+
+        self.try_fill_bytes(&mut buf)?;
+
+        Ok(u64::from_le_bytes(buf))
     }
 
-    #[inline]
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
         let len = min(self.v.len(), dest.len());
-        dest[..len].copy_from_slice(&self.v[..len]);
-        rotate_left(&mut self.v, len);
-    }
 
-    #[inline]
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        self.fill_bytes(dest);
+        dest[..len].copy_from_slice(&self.v[..len]);
+
+        rotate_left(&mut self.v, len);
+
         Ok(())
     }
 }
 
 // This is meant for testing only
-impl CryptoRng for CycleRng {}
+impl TryCryptoRng for CycleRng {}

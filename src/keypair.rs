@@ -13,7 +13,7 @@
 use derive_where::derive_where;
 use digest::{Output, OutputSizeUser};
 use generic_array::{ArrayLength, GenericArray};
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 
 use crate::ciphersuite::CipherSuite;
 use crate::errors::ProtocolError;
@@ -32,11 +32,7 @@ use crate::serialization::SliceExt;
     ))
 )]
 #[derive_where(Clone)]
-#[derive_where(Eq, Hash, Ord, PartialEq, PartialOrd; G::Pk, SK)]
-// `NonZeroScalar` doesn't implement `Debug`.
-// TODO: remove after `elliptic-curve` bump to v0.14.
-#[cfg_attr(not(test), derive_where(Debug; G::Pk, SK))]
-#[cfg_attr(test, derive_where(Debug), derive_where(skip_inner(Debug)))]
+#[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; G::Pk, SK)]
 pub struct KeyPair<G: Group, SK: Clone = PrivateKey<G>> {
     pk: PublicKey<G>,
     sk: SK,
@@ -60,7 +56,7 @@ impl<G: Group, SK: Clone> KeyPair<G, SK> {
 }
 
 impl<G: Group> KeyPair<G> {
-    pub(crate) fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+    pub(crate) fn random<R: Rng + CryptoRng>(rng: &mut R) -> Self {
         let sk = G::random_sk(rng);
         let pk = G::public_key(&sk);
         Self {
@@ -70,7 +66,7 @@ impl<G: Group> KeyPair<G> {
     }
 
     /// Generating a random key pair given a cryptographic rng
-    pub(crate) fn derive_random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+    pub(crate) fn derive_random<R: Rng + CryptoRng>(rng: &mut R) -> Self {
         let mut scalar_bytes = GenericArray::<_, <G as Group>::SkLen>::default();
         rng.fill_bytes(&mut scalar_bytes);
         let sk = G::derive_scalar(scalar_bytes).unwrap();
@@ -133,7 +129,7 @@ where
 impl<G: Group> PrivateKey<G> {
     /// Private-key signing implementation
     pub(crate) fn sign<
-        R: CryptoRng + RngCore,
+        R: CryptoRng + Rng,
         CS: CipherSuite,
         SIG: SignatureProtocol<Group = G>,
         KE: Group,
@@ -152,7 +148,7 @@ pub trait PrivateKeySerialization<G: Group>: Clone {
     /// Custom error type that can be passed down to `ProtocolError::Custom`
     type Error;
     /// Serialization size in bytes.
-    type Len: ArrayLength<u8>;
+    type Len: ArrayLength;
 
     /// Serialization into bytes
     fn serialize_key_pair(key_pair: &KeyPair<G, Self>) -> GenericArray<u8, Self::Len>;
@@ -242,7 +238,7 @@ pub struct OprfSeed<H: OutputSizeUser>(pub(crate) Output<H>);
 /// Will be called with `E` being [`PrivateKeySerialization::Error`].
 pub trait OprfSeedSerialization<H, E>: Sized {
     /// Serialization size in bytes.
-    type Len: ArrayLength<u8>;
+    type Len: ArrayLength;
 
     /// Serialization into bytes
     fn serialize(&self) -> GenericArray<u8, Self::Len>;
@@ -253,18 +249,22 @@ pub trait OprfSeedSerialization<H, E>: Sized {
     fn deserialize_take(bytes: &mut &[u8]) -> Result<Self, ProtocolError<E>>;
 }
 
-impl<H: OutputSizeUser, E> OprfSeedSerialization<H, E> for OprfSeed<H> {
+impl<H: OutputSizeUser, E> OprfSeedSerialization<H, E> for OprfSeed<H>
+where
+    H::OutputSize: ArrayLength,
+{
     type Len = H::OutputSize;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.0.clone()
+        GenericArray::from_slice(self.0.as_slice()).clone()
     }
 
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError<E>> {
         Ok(Self(
             input
                 .take_array("OPRF seed")
-                .map_err(ProtocolError::into_custom)?,
+                .map_err(ProtocolError::into_custom)?
+                .into_ha0_4(),
         ))
     }
 }
@@ -275,7 +275,11 @@ impl<H: OutputSizeUser, E> OprfSeedSerialization<H, E> for OprfSeed<H> {
 //////////////////////////
 
 #[cfg(test)]
-impl<G: Group> KeyPair<G> {
+impl<G: Group> KeyPair<G>
+where
+    G::Pk: core::fmt::Debug,
+    G::Sk: core::fmt::Debug,
+{
     /// Test-only strategy returning a proptest Strategy based on
     /// [`Self::derive_random`]
     fn uniform_keypair_strategy() -> proptest::prelude::BoxedStrategy<Self> {
@@ -297,9 +301,6 @@ impl<G: Group> KeyPair<G> {
 
 #[cfg(test)]
 mod tests {
-    use hkdf::Hkdf;
-    use rand::rngs::OsRng;
-
     use super::*;
     use crate::ciphersuite::{KeGroup, OprfHash};
     use crate::{
@@ -309,6 +310,9 @@ mod tests {
         ServerLoginParameters, ServerLoginStartResult, ServerRegistration,
         ServerRegistrationStartResult, ServerSetup,
     };
+    use hkdf::Hkdf;
+    use rand::rngs::SysRng;
+    use rand_core::UnwrapErr;
 
     macro_rules! test {
         ($mod:ident, $point:ty) => {
@@ -323,7 +327,7 @@ mod tests {
                     fn pub_from_priv(kp in KeyPair::<$point>::uniform_keypair_strategy()) {
                         let pk = kp.public();
                         let sk = kp.private();
-                        prop_assert_eq!(&sk.public_key(), pk);
+                        prop_assert_eq!(sk.public_key().serialize(), pk.serialize());
                     }
 
                     #[test]
@@ -380,23 +384,24 @@ mod tests {
 
     #[test]
     fn remote_key() {
-        let sk = PrivateKey(KeGroup::<Default>::random_sk(&mut OsRng));
+        let sk = PrivateKey(KeGroup::<Default>::random_sk(&mut UnwrapErr(SysRng)));
         let pk = sk.public_key();
         let sk = RemoteKey(sk);
         let keypair = KeyPair::new(sk, pk);
 
         let server_setup =
-            ServerSetup::<Default, RemoteKey>::new_with_key_pair(&mut OsRng, keypair);
+            ServerSetup::<Default, RemoteKey>::new_with_key_pair(&mut UnwrapErr(SysRng), keypair);
 
         let ClientRegistrationStartResult {
             message,
             state: client,
-        } = ClientRegistration::<Default>::start(&mut OsRng, PASSWORD.as_bytes()).unwrap();
+        } = ClientRegistration::<Default>::start(&mut UnwrapErr(SysRng), PASSWORD.as_bytes())
+            .unwrap();
         let ServerRegistrationStartResult { message, .. } =
             ServerRegistration::start(&server_setup, message, &[]).unwrap();
         let ClientRegistrationFinishResult { message, .. } = client
             .finish(
-                &mut OsRng,
+                &mut UnwrapErr(SysRng),
                 PASSWORD.as_bytes(),
                 message,
                 ClientRegistrationFinishParameters::default(),
@@ -407,9 +412,9 @@ mod tests {
         let ClientLoginStartResult {
             message,
             state: client,
-        } = ClientLogin::<Default>::start(&mut OsRng, PASSWORD.as_bytes()).unwrap();
+        } = ClientLogin::<Default>::start(&mut UnwrapErr(SysRng), PASSWORD.as_bytes()).unwrap();
         let builder = ServerLogin::builder(
-            &mut OsRng,
+            &mut UnwrapErr(SysRng),
             &server_setup,
             Some(file),
             message,
@@ -425,7 +430,7 @@ mod tests {
         } = builder.build(shared_secret).unwrap();
         let ClientLoginFinishResult { message, .. } = client
             .finish(
-                &mut OsRng,
+                &mut UnwrapErr(SysRng),
                 PASSWORD.as_bytes(),
                 message,
                 ClientLoginFinishParameters::default(),
@@ -438,22 +443,25 @@ mod tests {
 
     #[test]
     fn remote_seed() {
-        let mut oprf_seed = RemoteSeed::<OprfHash<Default>>(GenericArray::default());
-        OsRng.fill_bytes(&mut oprf_seed.0);
+        let mut oprf_seed = RemoteSeed::<OprfHash<Default>>(GenericArray::default().into_ha0_4());
+        UnwrapErr(SysRng).fill_bytes(&mut oprf_seed.0);
 
-        let sk = PrivateKey(KeGroup::<Default>::random_sk(&mut OsRng));
+        let sk = PrivateKey(KeGroup::<Default>::random_sk(&mut UnwrapErr(SysRng)));
         let pk = sk.public_key();
         let sk = RemoteKey(sk);
         let keypair = KeyPair::new(sk, pk);
 
         let server_setup = ServerSetup::<Default, _, _>::new_with_key_pair_and_seed(
-            &mut OsRng, keypair, oprf_seed,
+            &mut UnwrapErr(SysRng),
+            keypair,
+            oprf_seed,
         );
 
         let ClientRegistrationStartResult {
             message,
             state: client,
-        } = ClientRegistration::<Default>::start(&mut OsRng, PASSWORD.as_bytes()).unwrap();
+        } = ClientRegistration::<Default>::start(&mut UnwrapErr(SysRng), PASSWORD.as_bytes())
+            .unwrap();
         let km = server_setup.key_material_info(&[]);
         let mut ikm = GenericArray::default();
         Hkdf::<OprfHash<Default>>::from_prk(&km.ikm.0)
@@ -464,7 +472,7 @@ mod tests {
             ServerRegistration::start_with_key_material(&server_setup, ikm, message).unwrap();
         let ClientRegistrationFinishResult { message, .. } = client
             .finish(
-                &mut OsRng,
+                &mut UnwrapErr(SysRng),
                 PASSWORD.as_bytes(),
                 message,
                 ClientRegistrationFinishParameters::default(),
@@ -475,7 +483,7 @@ mod tests {
         let ClientLoginStartResult {
             message,
             state: client,
-        } = ClientLogin::<Default>::start(&mut OsRng, PASSWORD.as_bytes()).unwrap();
+        } = ClientLogin::<Default>::start(&mut UnwrapErr(SysRng), PASSWORD.as_bytes()).unwrap();
         let km = server_setup.key_material_info(&[]);
         let mut ikm = GenericArray::default();
         Hkdf::<OprfHash<Default>>::from_prk(&km.ikm.0)
@@ -483,7 +491,7 @@ mod tests {
             .expand_multi_info(&km.info, &mut ikm)
             .unwrap();
         let builder = ServerLogin::builder_with_key_material(
-            &mut OsRng,
+            &mut UnwrapErr(SysRng),
             &server_setup,
             ikm,
             Some(file),
@@ -499,7 +507,7 @@ mod tests {
         } = builder.build(shared_secret).unwrap();
         let ClientLoginFinishResult { message, .. } = client
             .finish(
-                &mut OsRng,
+                &mut UnwrapErr(SysRng),
                 PASSWORD.as_bytes(),
                 message,
                 ClientLoginFinishParameters::default(),

@@ -15,20 +15,18 @@ pub(crate) fn rfc_to_json(input: &str) -> String {
 }
 
 fn parse_vector_types(input: &str) -> String {
-    let re = regex::Regex::new(r"  (?P<type>.+?) Test Vectors").unwrap();
+    let re = regex::Regex::new(r" {2}(?P<type>.+?) Test Vectors").unwrap();
     let mut vector_types = vec![];
 
     let chunks: Vec<&str> = re.split(input).collect();
 
-    let mut count = 1;
-    for caps in re.captures_iter(input) {
+    for (count, caps) in (1..).zip(re.captures_iter(input)) {
         let vector_type = format!(
             "\"{}\": [\n {} \n]",
             &caps["type"].trim(),
             parse_ciphersuites(chunks[count])
         );
         vector_types.push(vector_type);
-        count += 1;
     }
 
     vector_types.join(",\n")
@@ -36,15 +34,14 @@ fn parse_vector_types(input: &str) -> String {
 
 fn parse_ciphersuites(input: &str) -> String {
     let re = regex::Regex::new(
-        r" Configuration\n(.|\n)*?OPRF: (?P<oprf>.*?)\n(.|\n)*?Group: (?P<group>.*?)\n",
+        r" Configuration\n([\s\S])*?OPRF: (?P<oprf>.*?)\n([\s\S])*?Group: (?P<group>.*?)\n",
     )
     .unwrap();
     let mut ciphersuites = vec![];
 
     let chunks: Vec<&str> = re.split(input).collect();
 
-    let mut count = 1;
-    for caps in re.captures_iter(input) {
+    for (count, caps) in (1..).zip(re.captures_iter(input)) {
         let ciphersuite = format!(
             "{{ \"{}, {}\": {{ {} }} }}",
             &caps["oprf"],
@@ -52,7 +49,6 @@ fn parse_ciphersuites(input: &str) -> String {
             parse_params(chunks[count])
         );
         ciphersuites.push(ciphersuite);
-        count += 1;
     }
 
     ciphersuites.join(",\n")

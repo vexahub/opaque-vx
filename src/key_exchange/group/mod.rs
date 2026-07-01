@@ -17,7 +17,8 @@ pub mod elliptic_curve;
 pub mod ristretto255;
 
 use generic_array::{ArrayLength, GenericArray};
-use rand::{CryptoRng, RngCore};
+use hybrid_array::ArraySize;
+use rand::{CryptoRng, Rng};
 use zeroize::ZeroizeOnDrop;
 
 use crate::errors::{InternalError, ProtocolError};
@@ -29,11 +30,11 @@ pub trait Group {
     /// Public key
     type Pk: Clone;
     /// Length of the public key
-    type PkLen: ArrayLength<u8>;
+    type PkLen: ArrayLength + ArraySize;
     /// Secret key
     type Sk: Clone + ZeroizeOnDrop;
     /// Length of the secret key
-    type SkLen: ArrayLength<u8>;
+    type SkLen: ArrayLength + ArraySize;
 
     /// Serializes `self`
     fn serialize_pk(pk: &Self::Pk) -> GenericArray<u8, Self::PkLen>;
@@ -44,7 +45,7 @@ pub trait Group {
     fn deserialize_take_pk(bytes: &mut &[u8]) -> Result<Self::Pk, ProtocolError>;
 
     /// Generate a random secret key
-    fn random_sk<R: RngCore + CryptoRng>(rng: &mut R) -> Self::Sk;
+    fn random_sk<R: Rng + CryptoRng>(rng: &mut R) -> Self::Sk;
 
     /// Deterministically derive a [`Self::Sk`] from `seed`.
     fn derive_scalar(seed: GenericArray<u8, Self::SkLen>) -> Result<Self::Sk, InternalError>;

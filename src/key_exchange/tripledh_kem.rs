@@ -23,18 +23,18 @@ use core::marker::PhantomData;
 use core::ops::Add;
 
 use derive_where::derive_where;
-use digest::core_api::BlockSizeUser;
-use digest::{Digest, Output};
-use generic_array::sequence::Concat;
-use generic_array::typenum::{IsLess, Le, NonZero, Sum, U256};
+use digest::Output;
+use digest::block_api::{CoreProxy, SmallBlockSizeUser};
+use generic_array::typenum::{Cmp, IsLess, Le, NonZero, Sum, U256};
 use generic_array::{ArrayLength, GenericArray};
+use hybrid_array::ArraySize;
 #[allow(deprecated)]
 use ml_kem::ExpandedKeyEncoding;
 use ml_kem::kem::{
     Ciphertext as MlKemCiphertext, Decapsulate, Encapsulate, Kem as MlKemTrait, KeyExport,
     KeySizeUser, TryKeyInit,
 };
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 use subtle::{ConstantTimeEq, CtOption};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -50,7 +50,7 @@ use crate::hash::{Hash, OutputSize, ProxyHash};
 use crate::key_exchange::group::Group;
 use crate::keypair::{PrivateKey, PublicKey};
 use crate::opaque::Identifiers;
-use crate::serialization::SliceExt;
+use crate::serialization::{ConcatExt, SliceExt};
 
 /// Adapter trait that augments the `ml-kem` core traits with the metadata
 /// required by OPAQUE (e.g. fixed lengths and serialization hooks).
@@ -62,16 +62,16 @@ pub trait KemCoreWrapper {
     type DecapsulationKey: Clone + ZeroizeOnDrop;
 
     /// Length (in bytes) of the serialized public key.
-    type EncapsulationKeyLen: ArrayLength<u8>;
+    type EncapsulationKeyLen: ArrayLength + ArraySize;
     /// Length (in bytes) of the serialized secret key.
-    type DecapsulationKeyLen: ArrayLength<u8>;
+    type DecapsulationKeyLen: ArrayLength + ArraySize;
     /// Length (in bytes) of the encapsulated ciphertext.
-    type CiphertextLen: ArrayLength<u8>;
+    type CiphertextLen: ArrayLength + ArraySize;
     /// Length (in bytes) of the shared secret output by the KEM.
-    type SharedSecretLen: ArrayLength<u8>;
+    type SharedSecretLen: ArrayLength + ArraySize;
 
     /// Generates a fresh KEM key pair.
-    fn generate<R: RngCore + CryptoRng>(
+    fn generate<R: Rng + CryptoRng>(
         rng: &mut R,
     ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), ProtocolError>;
 
@@ -98,7 +98,7 @@ pub trait KemCoreWrapper {
     /// Encapsulates to the given public key, returning the ciphertext and
     /// shared secret.
     #[allow(clippy::type_complexity)]
-    fn encapsulate<R: RngCore + CryptoRng>(
+    fn encapsulate<R: Rng + CryptoRng>(
         key: &Self::EncapsulationKey,
         rng: &mut R,
     ) -> Result<
@@ -120,7 +120,7 @@ pub trait KemCoreWrapper {
 /// which is required by `ml-kem 0.3.x`.
 struct RngCompat<'a, R>(&'a mut R);
 
-impl<R: RngCore> rand_core_10::TryRng for RngCompat<'_, R> {
+impl<R: Rng> rand_core::TryRng for RngCompat<'_, R> {
     type Error = core::convert::Infallible;
 
     fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
@@ -137,7 +137,7 @@ impl<R: RngCore> rand_core_10::TryRng for RngCompat<'_, R> {
     }
 }
 
-impl<R: RngCore + CryptoRng> rand_core_10::TryCryptoRng for RngCompat<'_, R> {}
+impl<R: Rng + CryptoRng> rand_core::TryCryptoRng for RngCompat<'_, R> {}
 
 type RcEncapsulationKeyLen<K> = <<K as MlKemTrait>::EncapsulationKey as KeySizeUser>::KeySize;
 #[allow(deprecated)]
@@ -152,10 +152,10 @@ where
     K: MlKemTrait,
     K::EncapsulationKey: Encapsulate<Kem = K> + KeyExport + TryKeyInit + Clone,
     K::DecapsulationKey: Decapsulate<Kem = K> + ExpandedKeyEncoding + Clone + ZeroizeOnDrop,
-    RcEncapsulationKeyLen<K>: ArrayLength<u8>,
-    RcDecapsulationKeyLen<K>: ArrayLength<u8>,
-    RcCiphertextLen<K>: ArrayLength<u8>,
-    RcSharedSecretLen<K>: ArrayLength<u8>,
+    RcEncapsulationKeyLen<K>: ArrayLength + ArraySize,
+    RcDecapsulationKeyLen<K>: ArrayLength + ArraySize,
+    RcCiphertextLen<K>: ArrayLength + ArraySize,
+    RcSharedSecretLen<K>: ArrayLength + ArraySize,
 {
     type EncapsulationKey = K::EncapsulationKey;
     type DecapsulationKey = K::DecapsulationKey;
@@ -164,7 +164,7 @@ where
     type CiphertextLen = RcCiphertextLen<K>;
     type SharedSecretLen = RcSharedSecretLen<K>;
 
-    fn generate<R: RngCore + CryptoRng>(
+    fn generate<R: Rng + CryptoRng>(
         rng: &mut R,
     ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), ProtocolError> {
         Ok(K::generate_keypair_from_rng(&mut RngCompat(rng)))
@@ -173,7 +173,7 @@ where
     fn serialize_encapsulation_key(
         key: &Self::EncapsulationKey,
     ) -> GenericArray<u8, Self::EncapsulationKeyLen> {
-        GenericArray::clone_from_slice(key.to_bytes().as_slice())
+        GenericArray::from_slice(key.to_bytes().as_slice()).clone()
     }
 
     fn deserialize_encapsulation_key(
@@ -189,7 +189,7 @@ where
     fn serialize_decapsulation_key(
         key: &Self::DecapsulationKey,
     ) -> GenericArray<u8, Self::DecapsulationKeyLen> {
-        GenericArray::clone_from_slice(key.to_expanded_bytes().as_slice())
+        GenericArray::from_slice(key.to_expanded_bytes().as_slice()).clone()
     }
 
     fn deserialize_decapsulation_key(
@@ -203,7 +203,7 @@ where
             .map_err(|_| ProtocolError::SerializationError)
     }
 
-    fn encapsulate<R: RngCore + CryptoRng>(
+    fn encapsulate<R: Rng + CryptoRng>(
         key: &Self::EncapsulationKey,
         rng: &mut R,
     ) -> Result<
@@ -215,8 +215,8 @@ where
     > {
         let (ciphertext, shared) = key.encapsulate_with_rng(&mut RngCompat(rng));
         Ok((
-            GenericArray::clone_from_slice(ciphertext.as_slice()),
-            GenericArray::clone_from_slice(shared.as_slice()),
+            GenericArray::from_slice(ciphertext.as_slice()).clone(),
+            GenericArray::from_slice(shared.as_slice()).clone(),
         ))
     }
 
@@ -227,7 +227,7 @@ where
         let ciphertext = MlKemCiphertext::<K>::try_from(encapsulated_key.as_slice())
             .map_err(|_| ProtocolError::SerializationError)?;
         let shared = key.decapsulate(&ciphertext);
-        Ok(GenericArray::clone_from_slice(shared.as_slice()))
+        Ok(GenericArray::from_slice(shared.as_slice()).clone())
     }
 }
 /// Triple Diffie-Hellman-style key exchange that offloads the second hop to a
@@ -281,8 +281,10 @@ pub struct KemKe1Message<G: Group, K: KemCoreWrapper> {
 pub struct KemKe2State<K: KemCoreWrapper, H: Hash>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
 {
     base_state: super::tripledh::Ke2State<H>,
     kem_encapsulation_key: GenericArray<u8, K::EncapsulationKeyLen>,
@@ -295,8 +297,10 @@ where
 pub struct KemKe2Builder<G: Group, H: Hash, K: KemCoreWrapper>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
 {
     server_nonce: GenericArray<u8, NonceLen>,
     transcript_hasher: H,
@@ -323,8 +327,10 @@ where
 pub struct KemKe2Message<G: Group, H: Hash, K: KemCoreWrapper>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
 {
     dh_message: super::tripledh::Ke2Message<G, H>,
     kem_ciphertext: GenericArray<u8, K::CiphertextLen>,
@@ -338,13 +344,15 @@ where
     G: Group,
     H: Hash,
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
     K: KemCoreWrapper,
 {
     fn drop(&mut self) {
         self.server_nonce.zeroize();
-        self.transcript_hasher.reset();
+        digest::Digest::reset(&mut self.transcript_hasher);
         self.shared_secret_1.zeroize();
         self.shared_secret_3.zeroize();
         self.kem_shared_secret.zeroize();
@@ -357,8 +365,10 @@ where
     G: Group,
     H: Hash,
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
     K: KemCoreWrapper,
 {
 }
@@ -369,11 +379,13 @@ where
     G::Sk: shared::DiffieHellman<G>,
     H: Hash,
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
     K: KemCoreWrapper,
     NonceLen: Add<K::EncapsulationKeyLen>,
-    Sum<NonceLen, K::EncapsulationKeyLen>: ArrayLength<u8>,
+    Sum<NonceLen, K::EncapsulationKeyLen>: ArrayLength,
 {
     type Group = G;
     type Hash = H;
@@ -390,7 +402,7 @@ where
     type KE2Message = KemKe2Message<G, H, K>;
     type KE3Message = KemKe3Message<H>;
 
-    fn generate_ke1<R: RngCore + CryptoRng>(
+    fn generate_ke1<R: Rng + CryptoRng>(
         rng: &mut R,
     ) -> Result<GenerateKe1Result<Self>, ProtocolError> {
         let base = super::tripledh::TripleDh::<G, H>::generate_ke1(rng)?;
@@ -409,7 +421,7 @@ where
         })
     }
 
-    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: RngCore + CryptoRng>(
+    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: Rng + CryptoRng>(
         rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -440,8 +452,11 @@ where
         let (kem_ciphertext, kem_shared_secret) = K::encapsulate(&encapsulation_key, rng)?;
 
         let mut transcript_hasher = transcript_hasher;
-        transcript_hasher.update(ke1_message.kem_encapsulation_key.as_slice());
-        transcript_hasher.update(kem_ciphertext.as_slice());
+        digest::Digest::update(
+            &mut transcript_hasher,
+            ke1_message.kem_encapsulation_key.as_slice(),
+        );
+        digest::Digest::update(&mut transcript_hasher, kem_ciphertext.as_slice());
 
         Ok(KemKe2Builder {
             server_nonce,
@@ -462,7 +477,7 @@ where
         (&builder.client_e_pk, &builder.kem_encapsulation_key)
     }
 
-    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         builder: &Self::KE2Builder<'_, CS>,
         _: &mut R,
         server_s_sk: &PrivateKey<G>,
@@ -516,7 +531,7 @@ where
         })
     }
 
-    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         _rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -537,8 +552,14 @@ where
             ke2_message.dh_message.server_nonce,
             &ke2_message.dh_message.server_e_pk.serialize(),
         );
-        transcript_hasher.update(ke1_message.kem_encapsulation_key.as_slice());
-        transcript_hasher.update(ke2_message.kem_ciphertext.as_slice());
+        digest::Digest::update(
+            &mut transcript_hasher,
+            ke1_message.kem_encapsulation_key.as_slice(),
+        );
+        digest::Digest::update(
+            &mut transcript_hasher,
+            ke2_message.kem_ciphertext.as_slice(),
+        );
 
         let shared_secret_1 = ke1_state
             .dh_state
@@ -606,14 +627,14 @@ impl<G: Group, K: KemCoreWrapper> Serialize for KemKe1State<G, K>
 where
     Ke1State<G>: Serialize,
     <Ke1State<G> as Serialize>::Len: Add<K::DecapsulationKeyLen>,
-    Sum<<Ke1State<G> as Serialize>::Len, K::DecapsulationKeyLen>: ArrayLength<u8>,
+    Sum<<Ke1State<G> as Serialize>::Len, K::DecapsulationKeyLen>: ArrayLength,
 {
     type Len = Sum<<Ke1State<G> as Serialize>::Len, K::DecapsulationKeyLen>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
         self.dh_state
             .serialize()
-            .concat(K::serialize_decapsulation_key(&self.kem_decapsulation_key))
+            .cat(K::serialize_decapsulation_key(&self.kem_decapsulation_key))
     }
 }
 
@@ -630,22 +651,24 @@ impl<G: Group, K: KemCoreWrapper> Serialize for KemKe1Message<G, K>
 where
     Ke1Message<G>: Serialize,
     <Ke1Message<G> as Serialize>::Len: Add<K::EncapsulationKeyLen>,
-    Sum<<Ke1Message<G> as Serialize>::Len, K::EncapsulationKeyLen>: ArrayLength<u8>,
+    Sum<<Ke1Message<G> as Serialize>::Len, K::EncapsulationKeyLen>: ArrayLength,
 {
     type Len = Sum<<Ke1Message<G> as Serialize>::Len, K::EncapsulationKeyLen>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
         self.dh_message
             .serialize()
-            .concat(self.kem_encapsulation_key.clone())
+            .cat(self.kem_encapsulation_key.clone())
     }
 }
 
 impl<K: KemCoreWrapper, H: Hash> Deserialize for KemKe2State<K, H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
@@ -659,16 +682,18 @@ where
 impl<K: KemCoreWrapper, H: Hash> Serialize for KemKe2State<K, H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
     super::tripledh::Ke2State<H>: Serialize,
     <super::tripledh::Ke2State<H> as Serialize>::Len: Add<K::EncapsulationKeyLen>,
     Sum<<super::tripledh::Ke2State<H> as Serialize>::Len, K::EncapsulationKeyLen>:
-        ArrayLength<u8> + Add<K::CiphertextLen>,
+        ArrayLength + Add<K::CiphertextLen>,
     Sum<
         Sum<<super::tripledh::Ke2State<H> as Serialize>::Len, K::EncapsulationKeyLen>,
         K::CiphertextLen,
-    >: ArrayLength<u8>,
+    >: ArrayLength,
 {
     type Len = Sum<
         Sum<<super::tripledh::Ke2State<H> as Serialize>::Len, K::EncapsulationKeyLen>,
@@ -678,16 +703,18 @@ where
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
         self.base_state
             .serialize()
-            .concat(self.kem_encapsulation_key.clone())
-            .concat(self.server_kem_ciphertext.clone())
+            .cat(self.kem_encapsulation_key.clone())
+            .cat(self.server_kem_ciphertext.clone())
     }
 }
 
 impl<G: Group, H: Hash, K: KemCoreWrapper> Deserialize for KemKe2Message<G, H, K>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
@@ -700,21 +727,21 @@ where
 impl<G: Group, H: Hash, K: KemCoreWrapper> Serialize for KemKe2Message<G, H, K>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: Cmp<U256>,
+    OutputSize<H>: ArrayLength,
     NonceLen: Add<G::PkLen>,
-    Sum<NonceLen, G::PkLen>: ArrayLength<u8> + Add<OutputSize<H>>,
-    Sum<Sum<NonceLen, G::PkLen>, OutputSize<H>>: ArrayLength<u8>,
+    Sum<NonceLen, G::PkLen>: ArrayLength + Add<OutputSize<H>>,
+    Sum<Sum<NonceLen, G::PkLen>, OutputSize<H>>: ArrayLength,
     super::tripledh::Ke2Message<G, H>: Serialize,
     <super::tripledh::Ke2Message<G, H> as Serialize>::Len: Add<K::CiphertextLen>,
     <<super::tripledh::Ke2Message<G, H> as Serialize>::Len as Add<K::CiphertextLen>>::Output:
-        ArrayLength<u8>,
+        ArrayLength,
 {
     type Len = Sum<<super::tripledh::Ke2Message<G, H> as Serialize>::Len, K::CiphertextLen>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.dh_message
-            .serialize()
-            .concat(self.kem_ciphertext.clone())
+        self.dh_message.serialize().cat(self.kem_ciphertext.clone())
     }
 }

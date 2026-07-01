@@ -15,7 +15,8 @@ use digest::Output;
 use generic_array::sequence::Concat;
 use generic_array::typenum::{Sum, Unsigned};
 use generic_array::{ArrayLength, GenericArray};
-use rand::{CryptoRng, RngCore};
+use hybrid_array::Array;
+use rand::{CryptoRng, Rng};
 use voprf::{BlindedElement, BlindedElementLen, EvaluationElement, EvaluationElementLen};
 use zeroize::Zeroizing;
 
@@ -50,7 +51,7 @@ use crate::serialization::SliceExt;
 #[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; voprf::BlindedElement<CS::OprfCs>)]
 pub struct RegistrationRequest<CS: CipherSuite> {
     /// blinded password information
-    pub(crate) blinded_element: voprf::BlindedElement<CS::OprfCs>,
+    pub(crate) blinded_element: BlindedElement<CS::OprfCs>,
 }
 
 /// The answer sent by the server to the user, upon reception of the
@@ -64,10 +65,11 @@ pub struct RegistrationRequest<CS: CipherSuite> {
     ))
 )]
 #[derive_where(Clone)]
-#[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; voprf::EvaluationElement<CS::OprfCs>, <KeGroup<CS> as Group>::Pk)]
+#[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; voprf::EvaluationElement<CS::OprfCs>, <KeGroup<CS> as Group>::Pk
+)]
 pub struct RegistrationResponse<CS: CipherSuite> {
     /// The server's oprf output
-    pub(crate) evaluation_element: voprf::EvaluationElement<CS::OprfCs>,
+    pub(crate) evaluation_element: EvaluationElement<CS::OprfCs>,
     /// Server's static public key
     pub(crate) server_s_pk: PublicKey<KeGroup<CS>>,
 }
@@ -111,7 +113,7 @@ pub struct RegistrationUpload<CS: CipherSuite> {
     <CS::KeyExchange as KeyExchange>::KE1Message,
 )]
 pub struct CredentialRequest<CS: CipherSuite> {
-    pub(crate) blinded_element: voprf::BlindedElement<CS::OprfCs>,
+    pub(crate) blinded_element: BlindedElement<CS::OprfCs>,
     pub(crate) ke1_message: <CS::KeyExchange as KeyExchange>::KE1Message,
 }
 
@@ -136,7 +138,7 @@ pub struct CredentialRequest<CS: CipherSuite> {
 )]
 pub struct ServerLoginBuilder<'a, CS: CipherSuite, SK: Clone> {
     pub(crate) server_s_sk: SK,
-    pub(crate) evaluation_element: voprf::EvaluationElement<CS::OprfCs>,
+    pub(crate) evaluation_element: EvaluationElement<CS::OprfCs>,
     pub(crate) masking_nonce: Zeroizing<GenericArray<u8, NonceLen>>,
     pub(crate) masked_response: MaskedResponse<CS>,
     #[cfg(test)]
@@ -184,12 +186,12 @@ impl<CS: CipherSuite, SK: Clone> ServerLoginBuilder<'_, CS, SK> {
 #[derive_where(Clone)]
 #[derive_where(
     Debug, Eq, Hash, PartialEq;
-    voprf::EvaluationElement<CS::OprfCs>,
+    EvaluationElement<CS::OprfCs>,
     <CS::KeyExchange as KeyExchange>::KE2Message,
 )]
 pub struct CredentialResponse<CS: CipherSuite> {
     /// the server's oprf output
-    pub(crate) evaluation_element: voprf::EvaluationElement<CS::OprfCs>,
+    pub(crate) evaluation_element: EvaluationElement<CS::OprfCs>,
     pub(crate) masking_nonce: GenericArray<u8, NonceLen>,
     pub(crate) masked_response: MaskedResponse<CS>,
     pub(crate) ke2_message: <CS::KeyExchange as KeyExchange>::KE2Message,
@@ -225,19 +227,19 @@ pub type RegistrationRequestLen<CS: CipherSuite> = <OprfGroup<CS> as voprf::Grou
 impl<CS: CipherSuite> RegistrationRequest<CS> {
     /// Only used for testing purposes
     #[cfg(test)]
-    pub(crate) fn get_blinded_element_for_testing(&self) -> voprf::BlindedElement<CS::OprfCs> {
+    pub(crate) fn get_blinded_element_for_testing(&self) -> BlindedElement<CS::OprfCs> {
         self.blinded_element.clone()
     }
 
     /// Serialization into bytes
-    pub fn serialize(&self) -> GenericArray<u8, RegistrationRequestLen<CS>> {
+    pub fn serialize(&self) -> Array<u8, RegistrationRequestLen<CS>> {
         <OprfGroup<CS> as voprf::Group>::serialize_elem(self.blinded_element.value())
     }
 
     /// Deserialization from bytes
     pub fn deserialize(input: &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
-            blinded_element: voprf::BlindedElement::deserialize(input)?,
+            blinded_element: BlindedElement::deserialize(input)?,
         })
     }
 }
@@ -251,11 +253,14 @@ impl<CS: CipherSuite> RegistrationResponse<CS> {
     pub fn serialize(&self) -> GenericArray<u8, RegistrationResponseLen<CS>>
     where
         // RegistrationResponse: KgPk + KePk
-        <OprfGroup<CS> as voprf::Group>::ElemLen: Add<<KeGroup<CS> as Group>::PkLen>,
-        RegistrationResponseLen<CS>: ArrayLength<u8>,
+        <OprfGroup<CS> as voprf::Group>::ElemLen: Add<<KeGroup<CS> as Group>::PkLen> + ArrayLength,
+        RegistrationResponseLen<CS>: ArrayLength,
     {
-        <OprfGroup<CS> as voprf::Group>::serialize_elem(self.evaluation_element.value())
-            .concat(self.server_s_pk.serialize())
+        let elem = GenericArray::from_ha0_4(<OprfGroup<CS> as voprf::Group>::serialize_elem(
+            self.evaluation_element.value(),
+        ));
+
+        elem.concat(self.server_s_pk.serialize())
     }
 
     /// Deserialization from bytes
@@ -277,7 +282,7 @@ impl<CS: CipherSuite> RegistrationResponse<CS> {
         beta: <OprfGroup<CS> as voprf::Group>::Elem,
     ) -> Self {
         Self {
-            evaluation_element: voprf::EvaluationElement::from_value_unchecked(beta),
+            evaluation_element: EvaluationElement::from_value_unchecked(beta),
             server_s_pk: self.server_s_pk.clone(),
         }
     }
@@ -294,26 +299,29 @@ impl<CS: CipherSuite> RegistrationUpload<CS> {
         // RegistrationUpload: (KePk + Hash) + Envelope
         <KeGroup<CS> as Group>::PkLen: Add<OutputSize<OprfHash<CS>>>,
         Sum<<KeGroup<CS> as Group>::PkLen, OutputSize<OprfHash<CS>>>:
-            ArrayLength<u8> + Add<EnvelopeLen<CS>>,
-        RegistrationUploadLen<CS>: ArrayLength<u8>,
+            ArrayLength + Add<EnvelopeLen<CS>>,
+        RegistrationUploadLen<CS>: ArrayLength,
     {
-        self.client_s_pk
-            .serialize()
-            .concat(self.masking_key.clone())
-            .concat(self.envelope.serialize())
+        Concat::concat(
+            Concat::concat(
+                self.client_s_pk.serialize(),
+                GenericArray::from_slice(self.masking_key.as_slice()).clone(),
+            ),
+            self.envelope.serialize(),
+        )
     }
 
     /// Deserialization from bytes
     pub fn deserialize(mut input: &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
             client_s_pk: PublicKey::deserialize_take(&mut input)?,
-            masking_key: input.take_array("masking key")?,
+            masking_key: input.take_array("masking key")?.into_ha0_4(),
             envelope: Envelope::deserialize_take(&mut input)?,
         })
     }
 
     // Creates a dummy instance used for faking a [CredentialResponse]
-    pub(crate) fn dummy<R: RngCore + CryptoRng, SK: Clone, OS: Clone>(
+    pub(crate) fn dummy<R: Rng + CryptoRng, SK: Clone, OS: Clone>(
         rng: &mut R,
         server_setup: &ServerSetup<CS, SK, OS>,
     ) -> Self {
@@ -338,11 +346,14 @@ impl<CS: CipherSuite> CredentialRequest<CS> {
     where
         <CS::KeyExchange as KeyExchange>::KE1Message: Serialize,
         // CredentialRequest: KgPk + Ke1Message
-        <OprfGroup<CS> as voprf::Group>::ElemLen: Add<Ke1MessageLen<CS>>,
-        CredentialRequestLen<CS>: ArrayLength<u8>,
+        <OprfGroup<CS> as voprf::Group>::ElemLen: Add<Ke1MessageLen<CS>> + ArrayLength,
+        CredentialRequestLen<CS>: ArrayLength,
     {
-        <OprfGroup<CS> as voprf::Group>::serialize_elem(self.blinded_element.value())
-            .concat(self.ke1_message.serialize())
+        let elem = GenericArray::from_ha0_4(<OprfGroup<CS> as voprf::Group>::serialize_elem(
+            self.blinded_element.value(),
+        ));
+
+        elem.concat(self.ke1_message.serialize())
     }
 
     /// Deserialization from bytes
@@ -372,7 +383,7 @@ impl<CS: CipherSuite> CredentialRequest<CS> {
 
     /// Only used for testing purposes
     #[cfg(test)]
-    pub(crate) fn get_blinded_element_for_testing(&self) -> voprf::BlindedElement<CS::OprfCs> {
+    pub(crate) fn get_blinded_element_for_testing(&self) -> BlindedElement<CS::OprfCs> {
         self.blinded_element.clone()
     }
 }
@@ -390,18 +401,25 @@ impl<CS: CipherSuite> CredentialResponse<CS> {
     where
         <CS::KeyExchange as KeyExchange>::KE2Message: Serialize,
         // CredentialResponseWithoutKeLen: (KgPk + Nonce) + MaskedResponse
-        <OprfGroup<CS> as voprf::Group>::ElemLen: Add<NonceLen>,
+        <OprfGroup<CS> as voprf::Group>::ElemLen: Add<NonceLen> + ArrayLength,
         Sum<<OprfGroup<CS> as voprf::Group>::ElemLen, NonceLen>:
-            ArrayLength<u8> + Add<MaskedResponseLen<CS>>,
-        CredentialResponseWithoutKeLen<CS>: ArrayLength<u8>,
+            ArrayLength + Add<MaskedResponseLen<CS>>,
+        CredentialResponseWithoutKeLen<CS>: ArrayLength,
         // CredentialResponse: CredentialResponseWithoutKeLen + Ke2Message
         CredentialResponseWithoutKeLen<CS>: Add<Ke2MessageLen<CS>>,
-        CredentialResponseLen<CS>: ArrayLength<u8>,
+        CredentialResponseLen<CS>: ArrayLength,
     {
-        <OprfGroup<CS> as voprf::Group>::serialize_elem(self.evaluation_element.value())
-            .concat(self.masking_nonce)
-            .concat(self.masked_response.serialize())
-            .concat(self.ke2_message.serialize())
+        let elem = GenericArray::from_ha0_4(<OprfGroup<CS> as voprf::Group>::serialize_elem(
+            self.evaluation_element.value(),
+        ));
+
+        Concat::concat(
+            Concat::concat(
+                Concat::concat(elem, self.masking_nonce),
+                self.masked_response.serialize(),
+            ),
+            self.ke2_message.serialize(),
+        )
     }
 
     /// Deserialization from bytes
@@ -410,7 +428,7 @@ impl<CS: CipherSuite> CredentialResponse<CS> {
         <CS::KeyExchange as KeyExchange>::KE2Message: Deserialize,
     {
         let evaluation_element = EvaluationElement::deserialize(input)?;
-        input = &input[voprf::EvaluationElementLen::<CS::OprfCs>::USIZE..];
+        input = &input[EvaluationElementLen::<CS::OprfCs>::USIZE..];
 
         Ok(Self {
             evaluation_element,
@@ -438,7 +456,7 @@ impl<CS: CipherSuite> CredentialResponse<CS> {
         beta: <OprfGroup<CS> as voprf::Group>::Elem,
     ) -> Self {
         Self {
-            evaluation_element: voprf::EvaluationElement::from_value_unchecked(beta),
+            evaluation_element: EvaluationElement::from_value_unchecked(beta),
             masking_nonce: self.masking_nonce,
             masked_response: self.masked_response.clone(),
             ke2_message: self.ke2_message.clone(),

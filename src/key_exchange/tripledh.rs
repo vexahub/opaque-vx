@@ -12,12 +12,11 @@ use core::marker::PhantomData;
 use core::ops::Add;
 
 use derive_where::derive_where;
-use digest::core_api::BlockSizeUser;
-use digest::{Digest, Output, OutputSizeUser};
-use generic_array::sequence::Concat;
+use digest::block_api::{CoreProxy, SmallBlockSizeUser};
+use digest::{Output, OutputSizeUser};
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U256};
 use generic_array::{ArrayLength, GenericArray};
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 use subtle::{ConstantTimeEq, CtOption};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -34,7 +33,7 @@ use crate::key_exchange::shared::{self, NonceLen};
 pub use crate::key_exchange::shared::{DiffieHellman, Ke1Message, Ke1State};
 use crate::keypair::{PrivateKey, PublicKey};
 use crate::opaque::Identifiers;
-use crate::serialization::SliceExt;
+use crate::serialization::{ConcatExt, SliceExt};
 
 ////////////////////////////
 // High-level API Structs //
@@ -79,8 +78,9 @@ pub struct Ke2State<H: OutputSizeUser> {
 pub struct Ke2Builder<G: Group, H: Hash>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     server_nonce: GenericArray<u8, NonceLen>,
     transcript_hasher: H,
@@ -104,8 +104,9 @@ where
 pub struct Ke2Message<G: Group, H: Hash>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     pub(super) server_nonce: GenericArray<u8, NonceLen>,
     #[derive_where(skip(Zeroize))]
@@ -123,8 +124,9 @@ where
 pub struct Ke3Message<H: Hash>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     pub(super) mac: Output<H>,
 }
@@ -138,8 +140,9 @@ impl<G: Group + 'static, H: Hash> KeyExchange for TripleDh<G, H>
 where
     G::Sk: DiffieHellman<G>,
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     type Group = G;
     type Hash = H;
@@ -153,13 +156,13 @@ where
     type KE2Message = Ke2Message<G, H>;
     type KE3Message = Ke3Message<H>;
 
-    fn generate_ke1<R: RngCore + CryptoRng>(
+    fn generate_ke1<R: Rng + CryptoRng>(
         rng: &mut R,
     ) -> Result<GenerateKe1Result<Self>, ProtocolError> {
         shared::generate_ke1(rng)
     }
 
-    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: RngCore + CryptoRng>(
+    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: Rng + CryptoRng>(
         rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -201,7 +204,7 @@ where
         &builder.client_e_pk
     }
 
-    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         builder: &Self::KE2Builder<'_, CS>,
         _: &mut R,
         server_s_sk: &PrivateKey<G>,
@@ -247,7 +250,7 @@ where
         })
     }
 
-    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         _: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -319,13 +322,14 @@ where
 impl<H: Hash> Deserialize for Ke2State<H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
-            session_key: input.take_array("session key")?,
-            expected_mac: input.take_array("expected mac")?,
+            session_key: input.take_array("session key")?.into_ha0_4(),
+            expected_mac: input.take_array("expected mac")?.into_ha0_4(),
         })
     }
 }
@@ -333,26 +337,32 @@ where
 impl<H: Hash> Serialize for Ke2State<H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
     // Ke2State: Hash + Hash
     OutputSize<H>: Add<OutputSize<H>>,
-    Sum<OutputSize<H>, OutputSize<H>>: ArrayLength<u8>,
+    Sum<OutputSize<H>, OutputSize<H>>: ArrayLength,
 {
     type Len = Sum<OutputSize<H>, OutputSize<H>>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.session_key.clone().concat(self.expected_mac.clone())
+        let sk: GenericArray<u8, OutputSize<H>> =
+            GenericArray::from_slice(self.session_key.as_slice()).clone();
+        let mac: GenericArray<u8, OutputSize<H>> =
+            GenericArray::from_slice(self.expected_mac.as_slice()).clone();
+
+        sk.cat(mac)
     }
 }
 
-/// TODO: implement via derive after hash crates get `Zeroize` support in
-/// `digest` v11.
+/// TODO: implement via derive after `Hash` gets `Zeroize` support.
 impl<G: Group, H: Hash> Drop for Ke2Builder<G, H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     fn drop(&mut self) {
         let Self {
@@ -365,7 +375,7 @@ where
         } = self;
 
         server_nonce.zeroize();
-        transcript_hasher.reset();
+        digest::Reset::reset(transcript_hasher);
         shared_secret_1.zeroize();
         shared_secret_3.zeroize();
     }
@@ -374,22 +384,24 @@ where
 impl<G: Group, H: Hash> ZeroizeOnDrop for Ke2Builder<G, H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
 }
 
 impl<G: Group, H: Hash> Deserialize for Ke2Message<G, H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
             server_nonce: input.take_array("server nonce")?,
             server_e_pk: PublicKey::deserialize_take(input)?,
-            mac: input.take_array("mac")?,
+            mac: input.take_array("mac")?.into_ha0_4(),
         })
     }
 }
@@ -397,31 +409,33 @@ where
 impl<H: Hash, G: Group> Serialize for Ke2Message<G, H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
     // Ke2Message: (Nonce + KePk) + Hash
     NonceLen: Add<G::PkLen>,
-    Sum<NonceLen, G::PkLen>: ArrayLength<u8> + Add<OutputSize<H>>,
-    Sum<Sum<NonceLen, G::PkLen>, OutputSize<H>>: ArrayLength<u8>,
+    Sum<NonceLen, G::PkLen>: ArrayLength + Add<OutputSize<H>>,
+    Sum<Sum<NonceLen, G::PkLen>, OutputSize<H>>: ArrayLength,
 {
     type Len = Sum<Sum<NonceLen, G::PkLen>, OutputSize<H>>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
         self.server_nonce
-            .concat(self.server_e_pk.serialize())
-            .concat(self.mac.clone())
+            .cat(self.server_e_pk.serialize())
+            .cat(GenericArray::from_slice(self.mac.as_slice()).clone())
     }
 }
 
 impl<H: Hash> Deserialize for Ke3Message<H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     fn deserialize_take(bytes: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
-            mac: bytes.take_array("mac")?,
+            mac: bytes.take_array("mac")?.into_ha0_4(),
         })
     }
 }
@@ -429,12 +443,13 @@ where
 impl<H: Hash> Serialize for Ke3Message<H>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     type Len = OutputSize<H>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.mac.clone()
+        GenericArray::from_slice(self.mac.as_slice()).clone()
     }
 }

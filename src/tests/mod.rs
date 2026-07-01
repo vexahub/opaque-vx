@@ -6,6 +6,9 @@
 // of this source tree. You may select, at your option, one of the above-listed
 // licenses.
 
+use serde_json::Value;
+use std::vec::Vec;
+
 mod full_test;
 #[rustfmt::skip]
 #[allow(dead_code)]
@@ -14,3 +17,7 @@ pub mod mock_rng;
 mod parser;
 mod rfc9807_vectors;
 mod test_opaque_vectors;
+
+pub(crate) fn decode(values: &Value, key: &str) -> Option<Vec<u8>> {
+    values[key].as_str().and_then(|s| hex::decode(s).ok())
+}

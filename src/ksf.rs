@@ -15,7 +15,7 @@ use crate::errors::InternalError;
 /// Used for the key stretching function in OPAQUE
 pub trait Ksf: Default {
     /// Computes the key stretching function
-    fn hash<L: ArrayLength<u8>>(
+    fn hash<L: ArrayLength>(
         &self,
         input: GenericArray<u8, L>,
     ) -> Result<GenericArray<u8, L>, InternalError>;
@@ -26,7 +26,7 @@ pub trait Ksf: Default {
 pub struct Identity;
 
 impl Ksf for Identity {
-    fn hash<L: ArrayLength<u8>>(
+    fn hash<L: ArrayLength>(
         &self,
         input: GenericArray<u8, L>,
     ) -> Result<GenericArray<u8, L>, InternalError> {
@@ -36,7 +36,7 @@ impl Ksf for Identity {
 
 #[cfg(feature = "argon2")]
 impl Ksf for argon2::Argon2<'_> {
-    fn hash<L: ArrayLength<u8>>(
+    fn hash<L: ArrayLength>(
         &self,
         input: GenericArray<u8, L>,
     ) -> Result<GenericArray<u8, L>, InternalError> {

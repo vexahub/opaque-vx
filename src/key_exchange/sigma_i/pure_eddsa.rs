@@ -12,7 +12,7 @@
 use core::marker::PhantomData;
 
 use generic_array::GenericArray;
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 use zeroize::Zeroize;
 
 use self::implementation::PureEddsaImpl;
@@ -34,7 +34,7 @@ impl<G: PureEddsaImpl> SignatureProtocol for PureEddsa<G> {
     type SignatureLen = G::SignatureLen;
     type VerifyState<CS: CipherSuite, KE: Group> = CachedMessage<CS, KE>;
 
-    fn sign<'a, R: CryptoRng + RngCore, CS: CipherSuite, KE: Group>(
+    fn sign<'a, R: CryptoRng + Rng, CS: CipherSuite, KE: Group>(
         sk: &G::Sk,
         _: &mut R,
         message: &Message<CS, KE>,
@@ -51,12 +51,12 @@ impl<G: PureEddsaImpl> SignatureProtocol for PureEddsa<G> {
         G::verify(pk, message_builder, state, signature)
     }
 
-    fn deserialize_take_signature(bytes: &mut &[u8]) -> Result<Self::Signature, ProtocolError> {
-        G::deserialize_take_signature(bytes)
-    }
-
     fn serialize_signature(signature: &Self::Signature) -> GenericArray<u8, Self::SignatureLen> {
         G::serialize_signature(signature)
+    }
+
+    fn deserialize_take_signature(bytes: &mut &[u8]) -> Result<Self::Signature, ProtocolError> {
+        G::deserialize_take_signature(bytes)
     }
 }
 
@@ -67,7 +67,7 @@ pub(in super::super) mod implementation {
 
     pub trait PureEddsaImpl: Group {
         type Signature: Clone + Zeroize;
-        type SignatureLen: ArrayLength<u8>;
+        type SignatureLen: ArrayLength;
 
         fn sign<CS: CipherSuite, KE: Group>(
             sk: &Self::Sk,

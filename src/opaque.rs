@@ -8,15 +8,14 @@
 
 //! Provides the main OPAQUE API
 
-use core::ops::{Add, Deref};
-
+use core::ops::Add;
 use derive_where::derive_where;
 use digest::Output;
-use generic_array::sequence::Concat;
 use generic_array::typenum::{Sum, Unsigned};
 use generic_array::{ArrayLength, GenericArray};
-use hkdf::{Hkdf, HkdfExtract};
-use rand::{CryptoRng, RngCore};
+use hkdf::Hkdf;
+use hkdf::SimpleHkdfExtract as HkdfExtract;
+use rand::{CryptoRng, Rng};
 use subtle::{Choice, ConstantTimeEq, CtOption};
 use voprf::{BlindedElement, Group as _, OprfClient, OprfClientLen};
 use zeroize::Zeroizing;
@@ -36,7 +35,7 @@ use crate::keypair::{
 };
 use crate::ksf::Ksf;
 use crate::messages::{CredentialRequestLen, RegistrationUploadLen};
-use crate::serialization::{GenericArrayExt, SliceExt};
+use crate::serialization::{ConcatExt, GenericArrayExt, SliceExt};
 use crate::{
     CredentialFinalization, CredentialRequest, CredentialResponse, RegistrationRequest,
     RegistrationResponse, RegistrationUpload, ServerLoginBuilder,
@@ -70,7 +69,8 @@ const STR_OPAQUE_DERIVE_KEY_PAIR: &[u8; 20] = b"OPAQUE-DeriveKeyPair";
     ))
 )]
 #[derive_where(Clone)]
-#[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; <KeGroup<CS> as Group>::Pk, <KeGroup<CS> as Group>::Sk, SK, OS)]
+#[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; <KeGroup<CS> as Group>::Pk, <KeGroup<CS> as Group>::Sk, SK, OS
+)]
 pub struct ServerSetup<
     CS: CipherSuite,
     SK: Clone = PrivateKey<KeGroup<CS>>,
@@ -94,8 +94,8 @@ pub struct ServerSetup<
     voprf::BlindedElement<CS::OprfCs>,
 )]
 pub struct ClientRegistration<CS: CipherSuite> {
-    pub(crate) oprf_client: voprf::OprfClient<CS::OprfCs>,
-    pub(crate) blinded_element: voprf::BlindedElement<CS::OprfCs>,
+    pub(crate) oprf_client: OprfClient<CS::OprfCs>,
+    pub(crate) blinded_element: BlindedElement<CS::OprfCs>,
 }
 
 /// The state elements the server holds to record a registration
@@ -130,7 +130,7 @@ pub struct ServerRegistration<CS: CipherSuite>(pub(crate) RegistrationUpload<CS>
     CredentialRequest<CS>,
 )]
 pub struct ClientLogin<CS: CipherSuite> {
-    pub(crate) oprf_client: voprf::OprfClient<CS::OprfCs>,
+    pub(crate) oprf_client: OprfClient<CS::OprfCs>,
     pub(crate) ke1_state: <CS::KeyExchange as KeyExchange>::KE1State,
     pub(crate) credential_request: CredentialRequest<CS>,
 }
@@ -160,7 +160,7 @@ pub struct ServerLogin<CS: CipherSuite> {
 
 impl<CS: CipherSuite> ServerSetup<CS, PrivateKey<KeGroup<CS>>> {
     /// Generate a new instance of server setup
-    pub fn new<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
+    pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Self {
         let keypair = KeyPair::random(rng);
         Self::new_with_key_pair(rng, keypair)
     }
@@ -179,7 +179,7 @@ impl<CS: CipherSuite, SK: Clone, OS: Clone> ServerSetup<CS, SK, OS> {
     /// This function should not be used to restore a previously-existing
     /// instance of [`ServerSetup`]. Instead, use [`ServerSetup::serialize`] and
     /// [`ServerSetup::deserialize`] for this purpose.
-    pub fn new_with_key_pair_and_seed<R: CryptoRng + RngCore>(
+    pub fn new_with_key_pair_and_seed<R: CryptoRng + Rng>(
         rng: &mut R,
         keypair: KeyPair<KeGroup<CS>, SK>,
         oprf_seed: OS,
@@ -211,13 +211,13 @@ impl<CS: CipherSuite, SK: Clone, OS: Clone> ServerSetup<CS, SK, OS> {
         OS: OprfSeedSerialization<OprfHash<CS>, SK::Error>,
         // ServerSetup: Hash + KeSk + KePk
         OS::Len: Add<SK::Len>,
-        Sum<OS::Len, SK::Len>: ArrayLength<u8> + Add<<KeGroup<CS> as Group>::PkLen>,
-        ServerSetupLen<CS, SK, OS>: ArrayLength<u8>,
+        Sum<OS::Len, SK::Len>: ArrayLength + Add<<KeGroup<CS> as Group>::PkLen>,
+        ServerSetupLen<CS, SK, OS>: ArrayLength,
     {
         self.oprf_seed
             .serialize()
-            .concat(SK::serialize_key_pair(&self.keypair))
-            .concat(self.dummy_pk.serialize())
+            .cat(SK::serialize_key_pair(&self.keypair))
+            .cat(self.dummy_pk.serialize())
     }
 
     /// Deserialization from bytes
@@ -246,11 +246,11 @@ impl<CS: CipherSuite, SK: Clone> ServerSetup<CS, SK> {
     /// This function should not be used to restore a previously-existing
     /// instance of [`ServerSetup`]. Instead, use [`ServerSetup::serialize`] and
     /// [`ServerSetup::deserialize`] for this purpose.
-    pub fn new_with_key_pair<R: CryptoRng + RngCore>(
+    pub fn new_with_key_pair<R: CryptoRng + Rng>(
         rng: &mut R,
         keypair: KeyPair<KeGroup<CS>, SK>,
     ) -> Self {
-        let mut oprf_seed = GenericArray::default();
+        let mut oprf_seed = Output::<OprfHash<CS>>::default();
         rng.fill_bytes(&mut oprf_seed);
 
         Self::new_with_key_pair_and_seed(rng, keypair, OprfSeed(oprf_seed))
@@ -282,12 +282,13 @@ impl<CS: CipherSuite> ClientRegistration<CS> {
     pub fn serialize(&self) -> GenericArray<u8, ClientRegistrationLen<CS>>
     where
         // ClientRegistration: KgSk + KgPk
-        <OprfGroup<CS> as voprf::Group>::ScalarLen: Add<<OprfGroup<CS> as voprf::Group>::ElemLen>,
-        ClientRegistrationLen<CS>: ArrayLength<u8>,
+        <OprfGroup<CS> as voprf::Group>::ScalarLen:
+            Add<<OprfGroup<CS> as voprf::Group>::ElemLen> + ArrayLength,
+        <OprfGroup<CS> as voprf::Group>::ElemLen: ArrayLength,
+        ClientRegistrationLen<CS>: ArrayLength,
     {
-        self.oprf_client
-            .serialize()
-            .concat(self.blinded_element.serialize())
+        GenericArray::from_ha0_4(self.oprf_client.serialize())
+            .cat(GenericArray::from_ha0_4(self.blinded_element.serialize()))
     }
 
     /// Deserialization from bytes
@@ -305,7 +306,7 @@ impl<CS: CipherSuite> ClientRegistration<CS> {
 
     /// Returns an initial "blinded" request to send to the server, as well as a
     /// [`ClientRegistration`]
-    pub fn start<R: RngCore + CryptoRng>(
+    pub fn start<R: Rng + CryptoRng>(
         blinding_factor_rng: &mut R,
         password: &[u8],
     ) -> Result<ClientRegistrationStartResult<CS>, ProtocolError> {
@@ -325,7 +326,7 @@ impl<CS: CipherSuite> ClientRegistration<CS> {
     /// "Unblinds" the server's answer and returns a final message containing
     /// cryptographic identifiers, to be sent to the server on setup
     /// finalization
-    pub fn finish<R: CryptoRng + RngCore>(
+    pub fn finish<R: CryptoRng + Rng>(
         self,
         rng: &mut R,
         password: &[u8],
@@ -357,7 +358,7 @@ impl<CS: CipherSuite> ClientRegistration<CS> {
 
         let result = Envelope::<CS>::seal(
             rng,
-            randomized_pwd_hasher,
+            &randomized_pwd_hasher,
             &registration_response.server_s_pk,
             params.identifiers,
         )?;
@@ -390,8 +391,8 @@ impl<CS: CipherSuite> ServerRegistration<CS> {
         // RegistrationUpload: (KePk + Hash) + Envelope
         <KeGroup<CS> as Group>::PkLen: Add<OutputSize<OprfHash<CS>>>,
         Sum<<KeGroup<CS> as Group>::PkLen, OutputSize<OprfHash<CS>>>:
-            ArrayLength<u8> + Add<EnvelopeLen<CS>>,
-        RegistrationUploadLen<CS>: ArrayLength<u8>,
+            ArrayLength + Add<EnvelopeLen<CS>>,
+        RegistrationUploadLen<CS>: ArrayLength,
         // ServerRegistration = RegistrationUpload
     {
         self.0.serialize()
@@ -449,7 +450,7 @@ impl<CS: CipherSuite> ServerRegistration<CS> {
     }
 
     // Creates a dummy instance used for faking a [CredentialResponse]
-    pub(crate) fn dummy<R: RngCore + CryptoRng, SK: Clone, S: Clone>(
+    pub(crate) fn dummy<R: Rng + CryptoRng, SK: Clone, S: Clone>(
         rng: &mut R,
         server_setup: &ServerSetup<CS, SK, S>,
     ) -> Self {
@@ -470,18 +471,17 @@ impl<CS: CipherSuite> ClientLogin<CS> {
         // CredentialRequest: KgPk + Ke1Message
         <CS::KeyExchange as KeyExchange>::KE1Message: Serialize,
         <OprfGroup<CS> as voprf::Group>::ElemLen: Add<Ke1MessageLen<CS>>,
-        CredentialRequestLen<CS>: ArrayLength<u8>,
+        CredentialRequestLen<CS>: ArrayLength,
         // ClientLogin: KgSk + CredentialRequest + Ke1State
         <OprfGroup<CS> as voprf::Group>::ScalarLen: Add<CredentialRequestLen<CS>>,
         <CS::KeyExchange as KeyExchange>::KE1State: Serialize,
         Sum<<OprfGroup<CS> as voprf::Group>::ScalarLen, CredentialRequestLen<CS>>:
-            ArrayLength<u8> + Add<Ke1StateLen<CS>>,
-        ClientLoginLen<CS>: ArrayLength<u8>,
+            ArrayLength + Add<Ke1StateLen<CS>>,
+        ClientLoginLen<CS>: ArrayLength,
     {
-        self.oprf_client
-            .serialize()
-            .concat(self.credential_request.serialize())
-            .concat(self.ke1_state.serialize())
+        GenericArray::from_ha0_4(self.oprf_client.serialize())
+            .cat(self.credential_request.serialize())
+            .cat(self.ke1_state.serialize())
     }
 
     /// Deserialization from bytes
@@ -504,7 +504,7 @@ impl<CS: CipherSuite> ClientLogin<CS> {
 impl<CS: CipherSuite> ClientLogin<CS> {
     /// Returns an initial "blinded" password request to send to the server, as
     /// well as a [`ClientLogin`]
-    pub fn start<R: RngCore + CryptoRng>(
+    pub fn start<R: Rng + CryptoRng>(
         rng: &mut R,
         password: &[u8],
     ) -> Result<ClientLoginStartResult<CS>, ProtocolError> {
@@ -528,7 +528,7 @@ impl<CS: CipherSuite> ClientLogin<CS> {
 
     /// "Unblinds" the server's answer and returns the opened assets from the
     /// server
-    pub fn finish<R: CryptoRng + RngCore>(
+    pub fn finish<R: CryptoRng + Rng>(
         self,
         rng: &mut R,
         password: &[u8],
@@ -570,7 +570,7 @@ impl<CS: CipherSuite> ClientLogin<CS> {
 
         let opened_envelope = envelope
             .open(
-                randomized_pwd_hasher,
+                &randomized_pwd_hasher,
                 server_s_pk.clone(),
                 params.identifiers,
             )
@@ -641,7 +641,7 @@ impl<CS: CipherSuite> ServerLogin<CS> {
     ///
     /// See [`ServerLogin::start()`] for the regular path. Or
     /// [`ServerLogin::builder()`] with just a remote private key.
-    pub fn builder_with_key_material<'a, R: RngCore + CryptoRng, SK: Clone, OS: Clone>(
+    pub fn builder_with_key_material<'a, R: Rng + CryptoRng, SK: Clone, OS: Clone>(
         rng: &mut R,
         server_setup: &ServerSetup<CS, SK, OS>,
         key_material: GenericArray<u8, <OprfGroup<CS> as voprf::Group>::ScalarLen>,
@@ -668,7 +668,7 @@ impl<CS: CipherSuite> ServerLogin<CS> {
 
         let masked_response = mask_response(
             &record.0.masking_key,
-            masking_nonce.as_slice(),
+            &masking_nonce,
             server_s_pk,
             &record.0.envelope,
         )?;
@@ -715,7 +715,7 @@ impl<CS: CipherSuite> ServerLogin<CS> {
     /// Create a [`ServerLoginBuilder`] to use with a remote private key.
     ///
     /// See [`ServerLogin::start()`] for the regular path.
-    pub fn builder<'a, R: RngCore + CryptoRng, SK: Clone>(
+    pub fn builder<'a, R: Rng + CryptoRng, SK: Clone>(
         rng: &mut R,
         server_setup: &ServerSetup<CS, SK>,
         password_file: Option<ServerRegistration<CS>>,
@@ -747,7 +747,7 @@ impl<CS: CipherSuite> ServerLogin<CS> {
 
         let credential_response = CredentialResponse {
             evaluation_element: builder.evaluation_element.clone(),
-            masking_nonce: *builder.masking_nonce.deref(),
+            masking_nonce: *builder.masking_nonce,
             masked_response: builder.masked_response.clone(),
             ke2_message: result.message,
         };
@@ -762,13 +762,13 @@ impl<CS: CipherSuite> ServerLogin<CS> {
             #[cfg(test)]
             server_mac_key: result.km2,
             #[cfg(test)]
-            oprf_key: builder.oprf_key.deref().clone(),
+            oprf_key: (*builder.oprf_key).clone(),
         })
     }
 
     /// From the client's "blinded" password, returns a challenge to be sent
     /// back to the client, as well as a [`ServerLogin`]
-    pub fn start<R: RngCore + CryptoRng>(
+    pub fn start<R: Rng + CryptoRng>(
         rng: &mut R,
         server_setup: &ServerSetup<CS>,
         password_file: Option<ServerRegistration<CS>>,
@@ -1004,21 +1004,22 @@ pub struct ServerLoginStartResult<CS: CipherSuite> {
 #[allow(clippy::type_complexity)]
 fn get_password_derived_key<CS: CipherSuite>(
     input: &[u8],
-    oprf_client: voprf::OprfClient<CS::OprfCs>,
+    oprf_client: OprfClient<CS::OprfCs>,
     evaluation_element: voprf::EvaluationElement<CS::OprfCs>,
     ksf: Option<&CS::Ksf>,
-) -> Result<(Output<OprfHash<CS>>, Hkdf<OprfHash<CS>>), ProtocolError> {
+) -> Result<(Output<OprfHash<CS>>, hkdf::SimpleHkdf<OprfHash<CS>>), ProtocolError> {
     let oprf_output = oprf_client.finalize(input, &evaluation_element)?;
+    let oprf_ga = GenericArray::from_ha0_4(oprf_output.clone());
 
     let hardened_output = if let Some(ksf) = ksf {
-        ksf.hash(oprf_output.clone())
+        ksf.hash(oprf_ga.clone())
     } else {
-        CS::Ksf::default().hash(oprf_output.clone())
+        CS::Ksf::default().hash(oprf_ga.clone())
     }
     .map_err(ProtocolError::from)?;
 
     let mut hkdf = HkdfExtract::<OprfHash<CS>>::new(None);
-    hkdf.input_ikm(&oprf_output);
+    hkdf.input_ikm(&oprf_ga);
     hkdf.input_ikm(&hardened_output);
     Ok(hkdf.finalize())
 }
@@ -1039,13 +1040,9 @@ fn oprf_key_material<CS: CipherSuite>(
 fn oprf_key_from_key_material<CS: CipherSuite>(
     input: GenericArray<u8, <OprfGroup<CS> as voprf::Group>::ScalarLen>,
 ) -> Result<GenericArray<u8, <OprfGroup<CS> as voprf::Group>::ScalarLen>, InternalError> {
-    Ok(OprfGroup::<CS>::serialize_scalar(voprf::derive_key::<
-        CS::OprfCs,
-    >(
-        input.as_slice(),
-        &GenericArray::from(*STR_OPAQUE_DERIVE_KEY_PAIR),
-        voprf::Mode::Oprf,
-    )?))
+    Ok(GenericArray::from_ha0_4(OprfGroup::<CS>::serialize_scalar(
+        voprf::derive_key::<CS::OprfCs>(&input, STR_OPAQUE_DERIVE_KEY_PAIR, voprf::Mode::Oprf)?,
+    )))
 }
 
 #[cfg_attr(
@@ -1066,19 +1063,28 @@ pub(crate) type MaskedResponseLen<CS: CipherSuite> =
 
 impl<CS: CipherSuite> MaskedResponse<CS> {
     pub(crate) fn serialize(&self) -> GenericArray<u8, MaskedResponseLen<CS>> {
-        self.nonce.concat_ext(&self.hash).concat(self.pk.clone())
-    }
+        let hash_ga: &GenericArray<u8, OutputSize<OprfHash<CS>>> =
+            GenericArray::from_slice(self.hash.as_slice());
 
+        self.nonce.concat_ext(hash_ga).cat(self.pk.clone())
+    }
     pub(crate) fn deserialize_take(bytes: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
             nonce: bytes.take_array("masked nonce")?,
-            hash: bytes.take_array("masked hash")?,
+            hash: bytes
+                .take_array::<OutputSize<OprfHash<CS>>>("masked hash")?
+                .into_ha0_4(),
             pk: bytes.take_array("masked public key")?,
         })
     }
 
     pub(crate) fn iter(&self) -> impl Clone + Iterator<Item = &[u8]> {
-        [self.nonce.as_slice(), &self.hash, &self.pk].into_iter()
+        [
+            self.nonce.as_slice(),
+            self.hash.as_slice(),
+            self.pk.as_slice(),
+        ]
+        .into_iter()
     }
 }
 
@@ -1105,7 +1111,9 @@ fn mask_response<CS: CipherSuite>(
         *x1 ^= x2
     }
 
-    MaskedResponse::deserialize_take(&mut (xor_pad.as_slice()))
+    let mut slice: &[u8] = &xor_pad;
+
+    MaskedResponse::deserialize_take(&mut (slice))
 }
 
 fn unmask_response<CS: CipherSuite>(
@@ -1124,7 +1132,7 @@ fn unmask_response<CS: CipherSuite>(
         *x1 ^= x2
     }
 
-    let mut xor_pad = xor_pad.as_slice();
+    let mut xor_pad: &[u8] = xor_pad.as_ref();
     let server_s_pk =
         PublicKey::deserialize_take(&mut xor_pad).map_err(|_| ProtocolError::SerializationError)?;
     let envelope = Envelope::deserialize_take(&mut xor_pad)?;
@@ -1135,12 +1143,12 @@ fn unmask_response<CS: CipherSuite>(
 /// Internal function for computing the blind result by calling the voprf
 /// library. Note that for tests, we use the deterministic blinding in order to
 /// be able to set the blinding factor directly from the passed-in rng.
-fn blind<CS: CipherSuite, R: RngCore + CryptoRng>(
+fn blind<CS: CipherSuite, R: Rng + CryptoRng>(
     rng: &mut R,
     password: &[u8],
 ) -> Result<voprf::OprfClientBlindResult<CS::OprfCs>, voprf::Error> {
     #[cfg(not(test))]
-    let result = voprf::OprfClient::blind(password, rng)?;
+    let result = OprfClient::blind(password, rng)?;
 
     #[cfg(test)]
     let result = {
@@ -1152,7 +1160,7 @@ fn blind<CS: CipherSuite, R: RngCore + CryptoRng>(
                 break scalar;
             }
         };
-        voprf::OprfClient::deterministic_blind_unchecked(password, blind)?
+        OprfClient::deterministic_blind_unchecked(password, blind)?
     };
 
     Ok(result)

@@ -30,16 +30,16 @@ use std::process::exit;
 
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use opaque_ke::ciphersuite::CipherSuite;
-use opaque_ke::generic_array::GenericArray;
-use opaque_ke::rand::RngCore;
-use opaque_ke::rand::rngs::OsRng;
-use opaque_ke::{
+use opaque_vx::ciphersuite::CipherSuite;
+use opaque_vx::rand::Rng;
+use opaque_vx::rand::rngs::SysRng;
+use opaque_vx::{
     ClientLogin, ClientLoginFinishParameters, ClientRegistration,
     ClientRegistrationFinishParameters, CredentialFinalization, CredentialRequest,
     CredentialResponse, RegistrationRequest, RegistrationResponse, RegistrationUpload, ServerLogin,
-    ServerLoginParameters, ServerRegistration, ServerRegistrationLen, ServerSetup,
+    ServerLoginParameters, ServerRegistration, ServerSetup,
 };
+use rand_core::UnwrapErr;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory;
@@ -51,43 +51,43 @@ struct DefaultCipherSuite;
 
 #[cfg(feature = "ristretto255")]
 impl CipherSuite for DefaultCipherSuite {
-    type OprfCs = opaque_ke::Ristretto255;
-    type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-    type Ksf = opaque_ke::ksf::Identity;
+    type OprfCs = opaque_vx::Ristretto255;
+    type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+    type Ksf = opaque_vx::ksf::Identity;
 }
 
 #[cfg(not(feature = "ristretto255"))]
 impl CipherSuite for DefaultCipherSuite {
     type OprfCs = p256::NistP256;
-    type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-    type Ksf = opaque_ke::ksf::Identity;
+    type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+    type Ksf = opaque_vx::ksf::Identity;
 }
 
 struct Locker {
     contents: Vec<u8>,
-    password_file: GenericArray<u8, ServerRegistrationLen<DefaultCipherSuite>>,
+    password_file: Vec<u8>,
 }
 
 // Given a key and plaintext, produce an AEAD ciphertext along with a nonce
 fn encrypt(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&key[..32]));
+    let cipher = ChaCha20Poly1305::new(&Key::try_from(&key[..32]).unwrap());
 
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let mut nonce_bytes = [0u8; 12];
     rng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = Nonce::try_from(&nonce_bytes[..]).unwrap();
 
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_ref()).unwrap();
+    let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref()).unwrap();
     [nonce_bytes.to_vec(), ciphertext].concat()
 }
 
 // Decrypt using a key and a ciphertext (nonce included) to recover the original
 // plaintext
 fn decrypt(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&key[..32]));
+    let cipher = ChaCha20Poly1305::new(&Key::try_from(&key[..32]).unwrap());
     cipher
         .decrypt(
-            Nonce::from_slice(&ciphertext[..12]),
+            &Nonce::try_from(&ciphertext[..12]).unwrap(),
             ciphertext[12..].as_ref(),
         )
         .unwrap()
@@ -101,7 +101,7 @@ fn register_locker(
     password: String,
     secret_message: String,
 ) -> Locker {
-    let mut client_rng = OsRng;
+    let mut client_rng = UnwrapErr(SysRng);
     let client_registration_start_result =
         ClientRegistration::<DefaultCipherSuite>::start(&mut client_rng, password.as_bytes())
             .unwrap();
@@ -143,7 +143,7 @@ fn register_locker(
 
     Locker {
         contents: ciphertext,
-        password_file: password_file.serialize(),
+        password_file: password_file.serialize().to_vec(),
     }
 }
 
@@ -154,7 +154,7 @@ fn open_locker(
     password: String,
     locker: &Locker,
 ) -> Result<String, String> {
-    let mut client_rng = OsRng;
+    let mut client_rng = UnwrapErr(SysRng);
     let client_login_start_result =
         ClientLogin::<DefaultCipherSuite>::start(&mut client_rng, password.as_bytes()).unwrap();
     let credential_request_bytes = client_login_start_result.message.serialize();
@@ -163,7 +163,7 @@ fn open_locker(
 
     let password_file =
         ServerRegistration::<DefaultCipherSuite>::deserialize(&locker.password_file).unwrap();
-    let mut server_rng = OsRng;
+    let mut server_rng = UnwrapErr(SysRng);
     let server_login_start_result = ServerLogin::start(
         &mut server_rng,
         server_setup,
@@ -217,7 +217,7 @@ fn open_locker(
 }
 
 fn main() {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let server_setup = ServerSetup::<DefaultCipherSuite>::new(&mut rng);
 
     let mut rl = Editor::<(), _>::new().unwrap();

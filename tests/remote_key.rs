@@ -36,27 +36,27 @@ use elliptic_curve::sec1::{FromEncodedPoint, ModulusSize, Tag, ToEncodedPoint};
 use elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Group as _, ProjectivePoint};
 use generic_array::typenum::Unsigned;
 use generic_array::{ArrayLength, GenericArray};
-use opaque_ke::key_exchange::KeyExchange;
-use opaque_ke::key_exchange::group::Group;
+use opaque_vx::key_exchange::KeyExchange;
+use opaque_vx::key_exchange::group::Group;
 #[cfg(all(feature = "ristretto255", feature = "ed25519"))]
-use opaque_ke::key_exchange::group::ed25519::{self, Ed25519};
-use opaque_ke::key_exchange::group::elliptic_curve::NonIdentity;
+use opaque_vx::key_exchange::group::ed25519::{self, Ed25519};
+use opaque_vx::key_exchange::group::elliptic_curve::NonIdentity;
 #[cfg(feature = "ecdsa")]
-use opaque_ke::key_exchange::sigma_i::ecdsa::{self, Ecdsa, PreHash};
+use opaque_vx::key_exchange::sigma_i::ecdsa::{self, Ecdsa, PreHash};
 #[cfg(all(feature = "ristretto255", feature = "ed25519"))]
-use opaque_ke::key_exchange::sigma_i::pure_eddsa::PureEddsa;
+use opaque_vx::key_exchange::sigma_i::pure_eddsa::PureEddsa;
 #[cfg(feature = "ecdsa")]
-use opaque_ke::key_exchange::sigma_i::{CachedMessage, HashOutput, Message, SigmaI};
-use opaque_ke::key_exchange::tripledh::TripleDh;
-use opaque_ke::keypair::{KeyPair, PublicKey};
-use opaque_ke::ksf::Identity;
-use opaque_ke::{
+use opaque_vx::key_exchange::sigma_i::{CachedMessage, HashOutput, Message, SigmaI};
+use opaque_vx::key_exchange::tripledh::TripleDh;
+use opaque_vx::keypair::{KeyPair, PublicKey};
+use opaque_vx::ksf::Identity;
+use opaque_vx::{
     CipherSuite, ClientLogin, ClientLoginFinishParameters, ClientLoginStartResult,
     ClientRegistration, ClientRegistrationFinishParameters, ClientRegistrationStartResult,
     ServerLogin, ServerLoginParameters, ServerLoginStartResult, ServerRegistration, ServerSetup,
 };
 #[cfg(all(feature = "curve25519", feature = "ristretto255"))]
-use opaque_ke::{Curve25519, Ristretto255};
+use opaque_vx::{Curve25519, Ristretto255};
 use p256::NistP256;
 use p384::NistP384;
 use p521::NistP521;

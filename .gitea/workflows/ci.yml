@@ -1,0 +1,156 @@
+name: Rust CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [ opened, reopened, synchronize ]
+
+concurrency:
+  group: ci-${{ gitea.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: linux_amd64
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: linux_amd64
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --features argon2,std,curve25519,ecdsa,ed25519,kem -- -D warnings
+      - name: Run cargo doc
+        run: cargo doc --no-deps --document-private-items --features argon2,std,curve25519,ecdsa,ed25519,kem
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  test:
+    name: test (${{ matrix.toolchain }} / ${{ matrix.backend_feature || 'no backend' }} / ${{ matrix.frontend_feature || 'no frontend' }})
+    runs-on: linux_amd64
+    strategy:
+      fail-fast: false
+      matrix:
+        backend_feature:
+          - ""
+          - --features ristretto255
+          - --features ristretto255,kem
+          - --features curve25519
+          - --features ecdsa
+          - --features ed25519
+          - --features ristretto255,curve25519,ecdsa,ed25519
+        frontend_feature:
+          - ""
+          - --features argon2
+          - --features serde
+        toolchain:
+          - stable
+          - "1.90.0"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@${{ matrix.toolchain }}
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-
+      - name: Run cargo test
+        run: cargo test --no-default-features ${{ matrix.backend_feature }} ${{ matrix.frontend_feature }}
+      - name: Run cargo test with std
+        run: cargo test --no-default-features --features std ${{ matrix.backend_feature }} ${{ matrix.frontend_feature }}
+
+  simple-login-test:
+    name: test simple_login example
+    runs-on: linux_amd64
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run expect
+        run: expect -f scripts/simple_login.exp
+
+  digital-locker-test:
+    name: test digital_locker example
+    runs-on: linux_amd64
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run expect
+        run: expect -f scripts/digital_locker.exp
+
+  build-no-std:
+    name: no-std (${{ matrix.target }} / ${{ matrix.backend_feature || 'no backend' }})
+    runs-on: linux_amd64
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - wasm32-unknown-unknown
+          - thumbv6m-none-eabi
+        backend_feature:
+          - ""
+          - ristretto255
+          - curve25519
+          - ecdsa
+          - ed25519
+          - ristretto255,curve25519,ecdsa,ed25519
+        frontend_feature:
+          - argon2
+          - serde
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build no-std
+        run: cargo build --verbose --target=${{ matrix.target }} --no-default-features --features ${{ matrix.frontend_feature }},${{ matrix.backend_feature }}
+
+  benches:
+    name: cargo bench compilation
+    runs-on: linux_amd64
+    strategy:
+      fail-fast: false
+      matrix:
+        backend_feature:
+          - --features ristretto255
+          - --features ristretto255,kem
+          - ""
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run cargo bench --no-run
+        run: cargo bench --no-default-features ${{ matrix.backend_feature }} --no-run
+
+  audit:
+    name: cargo audit
+    runs-on: linux_amd64
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Run cargo audit
+        run: cargo audit -D warnings

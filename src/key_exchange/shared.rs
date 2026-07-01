@@ -9,14 +9,15 @@
 use core::ops::Add;
 
 use derive_where::derive_where;
-use digest::core_api::BlockSizeUser;
+use digest::block_api::{CoreProxy, SmallBlockSizeUser};
 use digest::{Digest, Mac, Output, OutputSizeUser, Update};
 use generic_array::sequence::Concat;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U1, U2, U32, U256, Unsigned};
 use generic_array::{ArrayLength, GenericArray};
-use hkdf::{Hkdf, HkdfExtract};
-use hmac::Hmac;
-use rand::{CryptoRng, RngCore};
+use hkdf::SimpleHkdf as Hkdf;
+use hkdf::SimpleHkdfExtract as HkdfExtract;
+use hmac::{KeyInit, SimpleHmac};
+use rand::{CryptoRng, Rng};
 
 use super::{
     Deserialize, GenerateKe1Result, KeyExchange, Serialize, SerializedContext,
@@ -106,8 +107,9 @@ pub(super) struct DerivedKeys<H: OutputSizeUser> {
 pub(super) struct Ke2BuilderCommon<G: Group, H: Hash>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
     G::Sk: DiffieHellman<G>,
 {
     pub(super) server_nonce: GenericArray<u8, NonceLen>,
@@ -126,7 +128,7 @@ where
 // Helper functions
 
 pub(super) fn generate_ke1<
-    R: RngCore + CryptoRng,
+    R: Rng + CryptoRng,
     KE: KeyExchange<KE1State = Ke1State<G>, KE1Message = Ke1Message<G>>,
     G: Group,
 >(
@@ -150,7 +152,7 @@ pub(super) fn generate_ke1<
 }
 
 // Generate a random nonce up to NonceLen::USIZE bytes.
-pub(super) fn generate_nonce<R: RngCore + CryptoRng>(rng: &mut R) -> GenericArray<u8, NonceLen> {
+pub(super) fn generate_nonce<R: Rng + CryptoRng>(rng: &mut R) -> GenericArray<u8, NonceLen> {
     let mut nonce_bytes = GenericArray::default();
     rng.fill_bytes(&mut nonce_bytes);
     nonce_bytes
@@ -190,11 +192,12 @@ pub(super) fn ke2_builder_common<'a, G, H, CS, R>(
 where
     G: Group,
     H: Hash,
-    R: RngCore + CryptoRng,
+    R: Rng + CryptoRng,
     CS: CipherSuite,
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
     G::Sk: DiffieHellman<G>,
     CS::KeyExchange: KeyExchange<Group = G, Hash = H>,
 {
@@ -238,8 +241,9 @@ pub(super) fn derive_keys<'a, H: Hash>(
 ) -> Result<DerivedKeys<H>, ProtocolError>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     let mut hkdf = HkdfExtract::<H>::new(None);
 
@@ -280,19 +284,20 @@ pub(super) fn compute_ke2_macs<H: Hash>(
 ) -> Result<(Output<H>, Output<H>), ProtocolError>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     let mut mac_hasher =
-        Hmac::<H>::new_from_slice(&derived_keys.km2).map_err(|_| InternalError::HmacError)?;
+        SimpleHmac::<H>::new_from_slice(&derived_keys.km2).map_err(|_| InternalError::HmacError)?;
     Mac::update(&mut mac_hasher, transcript_digest);
     let mac = mac_hasher.finalize().into_bytes();
 
-    transcript_hasher.update(&mac);
+    Update::update(transcript_hasher, &mac);
     let finalized_transcript = transcript_hasher.clone().finalize();
 
     let mut expected_mac_hasher =
-        Hmac::<H>::new_from_slice(&derived_keys.km3).map_err(|_| InternalError::HmacError)?;
+        SimpleHmac::<H>::new_from_slice(&derived_keys.km3).map_err(|_| InternalError::HmacError)?;
     Mac::update(&mut expected_mac_hasher, &finalized_transcript);
     let expected_mac = expected_mac_hasher.finalize().into_bytes();
 
@@ -311,23 +316,24 @@ pub(super) fn finalize_ke3_transcript<'a, H: Hash>(
 ) -> Result<(DerivedKeys<H>, Output<H>), ProtocolError>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     let transcript_digest = transcript_hasher.clone().finalize();
     let derived_keys = derive_keys::<H>(shared_secrets, &transcript_digest)?;
     let mut server_mac_hasher =
-        Hmac::<H>::new_from_slice(&derived_keys.km2).map_err(|_| InternalError::HmacError)?;
+        SimpleHmac::<H>::new_from_slice(&derived_keys.km2).map_err(|_| InternalError::HmacError)?;
     Mac::update(&mut server_mac_hasher, &transcript_digest);
     server_mac_hasher
         .verify(server_mac)
         .map_err(|_| ProtocolError::InvalidLoginError)?;
 
-    transcript_hasher.update(server_mac.as_slice());
+    Update::update(transcript_hasher, server_mac);
     let finalized_transcript = transcript_hasher.clone().finalize();
 
     let mut client_mac_hasher =
-        Hmac::<H>::new_from_slice(&derived_keys.km3).map_err(|_| InternalError::HmacError)?;
+        SimpleHmac::<H>::new_from_slice(&derived_keys.km3).map_err(|_| InternalError::HmacError)?;
     Mac::update(&mut client_mac_hasher, &finalized_transcript);
 
     let client_mac = client_mac_hasher.finalize().into_bytes();
@@ -342,8 +348,9 @@ fn hkdf_expand_label<H: Hash>(
 ) -> Result<Output<H>, ProtocolError>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     let h = Hkdf::<H>::from_prk(secret).map_err(|_| InternalError::HkdfError)?;
     hkdf_expand_label_extracted(&h, label, context)
@@ -356,10 +363,11 @@ fn hkdf_expand_label_extracted<H: Hash>(
 ) -> Result<Output<H>, ProtocolError>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
-    let mut okm = GenericArray::default();
+    let mut okm = GenericArray::default().into_ha0_4();
 
     let length = i2osp::<U2>(OutputSize::<H>::USIZE)?;
     let label_length = i2osp::<U1>(STR_OPAQUE.len() + label.len())?;
@@ -386,8 +394,9 @@ fn derive_secrets<H: Hash>(
 ) -> Result<Output<H>, ProtocolError>
 where
     H::Core: ProxyHash,
-    <H::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<H::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<H>: ArrayLength,
 {
     hkdf_expand_label_extracted::<H>(hkdf, label, hashed_derivation_transcript)
 }
@@ -407,12 +416,14 @@ impl<G: Group> Serialize for Ke1State<G>
 where
     // Ke1State: KeSk + Nonce
     G::SkLen: Add<NonceLen>,
-    Sum<G::SkLen, NonceLen>: ArrayLength<u8>,
+    Sum<G::SkLen, NonceLen>: ArrayLength,
 {
     type Len = Sum<G::SkLen, NonceLen>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.client_e_sk.serialize().concat(self.client_nonce)
+        let a = self.client_e_sk.serialize();
+
+        GenericArray::concat(a, self.client_nonce)
     }
 }
 
@@ -429,7 +440,7 @@ impl<G: Group> Serialize for Ke1Message<G>
 where
     // Ke1Message: Nonce + KePk
     NonceLen: Add<G::PkLen>,
-    Sum<NonceLen, G::PkLen>: ArrayLength<u8>,
+    Sum<NonceLen, G::PkLen>: ArrayLength,
 {
     type Len = Sum<NonceLen, G::PkLen>;
 
@@ -476,7 +487,7 @@ impl<G: Group> Ke1MessageIter<G> {
 impl<G: Group> Ke1MessageIter<G>
 where
     NonceLen: Add<G::PkLen>,
-    Ke1MessageIterLen<G>: ArrayLength<u8>,
+    Ke1MessageIterLen<G>: ArrayLength,
 {
     pub(crate) fn serialize(&self) -> GenericArray<u8, Ke1MessageIterLen<G>> {
         self.client_nonce.concat(self.client_e_pk.clone())

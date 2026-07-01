@@ -141,8 +141,8 @@ impl<T> From<InternalError> for ProtocolError<T> {
 // See https://github.com/rust-lang/rust/issues/64715 and remove this when merged,
 // and https://github.com/dtolnay/thiserror/issues/62 for why this comes up in our
 // doc tests.
-impl<T> From<::core::convert::Infallible> for ProtocolError<T> {
-    fn from(_: ::core::convert::Infallible) -> Self {
+impl<T> From<Infallible> for ProtocolError<T> {
+    fn from(_: Infallible) -> Self {
         unreachable!()
     }
 }
@@ -164,6 +164,7 @@ impl ProtocolError {
                 actual_len,
             },
             Self::ReflectedValueError => ProtocolError::ReflectedValueError,
+            Self::Custom(infallible) => match infallible {},
         }
     }
 }

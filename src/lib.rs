@@ -27,14 +27,14 @@
 //!
 //! We will use the following choices in this example:
 //! ```ignore
-//! use opaque_ke::CipherSuite;
+//! use opaque_vx::CipherSuite;
 //!
 //! struct Default;
 //!
 //! impl CipherSuite for Default {
-//!     type OprfCs = opaque_ke::Ristretto255;
-//!     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//!     type Ksf = opaque_ke::ksf::Identity;
+//!     type OprfCs = opaque_vx::Ristretto255;
+//!     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//!     type Ksf = opaque_vx::ksf::Identity;
 //! }
 //! ```
 //! See [examples/simple_login.rs](https://github.com/facebook/opaque-ke/blob/main/examples/simple_login.rs)
@@ -50,26 +50,27 @@
 //! To set up the protocol, the server begins by creating a `ServerSetup`
 //! object:
 //! ```
-//! # use opaque_ke::errors::ProtocolError;
-//! # use opaque_ke::CipherSuite;
-//! # use opaque_ke::ServerSetup;
+//! # use opaque_vx::errors::ProtocolError;
+//! # use opaque_vx::CipherSuite;
+//! # use opaque_vx::ServerSetup;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! use rand::RngCore;
-//! use rand::rngs::OsRng;
+//! use rand::Rng;
+//! use rand::rngs::SysRng;
+//! use rand_core::UnwrapErr;
 //!
-//! let mut rng = OsRng;
+//! let mut rng = UnwrapErr(SysRng);
 //! let server_setup = ServerSetup::<Default>::new(&mut rng);
 //! # Ok::<(), ProtocolError>(())
 //! ```
@@ -103,30 +104,31 @@
 //! [`ClientRegistration`] which must be persisted on the client for the final
 //! step of client registration.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ServerRegistration,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! use opaque_ke::ClientRegistration;
-//! use rand::RngCore;
-//! use rand::rngs::OsRng;
+//! use opaque_vx::ClientRegistration;
+//! use rand::Rng;
+//! use rand::rngs::SysRng;
+//! use rand_core::UnwrapErr;
 //!
-//! let mut client_rng = OsRng;
+//! let mut client_rng = UnwrapErr(SysRng);
 //! let client_registration_start_result =
 //!     ClientRegistration::<Default>::start(&mut client_rng, b"password")?;
 //! # Ok::<(), ProtocolError>(())
@@ -140,35 +142,36 @@
 //! [`ServerRegistrationStartResult`], which consists of a
 //! [`RegistrationResponse`] to be returned to the client.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration,
 //! #   ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! use opaque_ke::ServerRegistration;
+//! use opaque_vx::ServerRegistration;
 //!
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! let server_registration_start_result = ServerRegistration::<Default>::start(
 //!     &server_setup,
@@ -188,35 +191,36 @@
 //! which can be used optionally as described in the [Export Key](#export-key)
 //! section.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ServerRegistration, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
-//! use opaque_ke::ClientRegistrationFinishParameters;
+//! use opaque_vx::ClientRegistrationFinishParameters;
 //!
 //! let client_registration_finish_result = client_registration_start_result.state.finish(
 //!     &mut client_rng,
@@ -236,32 +240,33 @@
 //! [`ServerRegistration::serialize`] to store the password file for use during
 //! the login protocol.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
@@ -287,29 +292,30 @@
 //! [`CredentialRequest`] to be sent to the server, and a [`ClientLogin`] which
 //! must be persisted on the client for the final step of client login.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ServerRegistration, ServerLogin, CredentialFinalization,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! use opaque_ke::ClientLogin;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! use opaque_vx::ClientLogin;
 //!
-//! let mut client_rng = OsRng;
+//! let mut client_rng = UnwrapErr(SysRng);
 //! let client_login_start_result = ClientLogin::<Default>::start(&mut client_rng, b"password")?;
 //! # Ok::<(), ProtocolError>(())
 //! ```
@@ -323,32 +329,33 @@
 //! a [`ServerLogin`] which must be persisted on the server for the final step
 //! of login.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
@@ -357,10 +364,10 @@
 //! #   &mut client_rng,
 //! #   b"password",
 //! # )?;
-//! use opaque_ke::{ServerLogin, ServerLoginParameters};
+//! use opaque_vx::{ServerLogin, ServerLoginParameters};
 //!
 //! let password_file = ServerRegistration::<Default>::deserialize(&password_file_bytes)?;
-//! let mut server_rng = OsRng;
+//! let mut server_rng = UnwrapErr(SysRng);
 //! let server_login_start_result = ServerLogin::start(
 //!     &mut server_rng,
 //!     &server_setup,
@@ -393,32 +400,33 @@
 //! [`session_key`](struct.ClientLoginFinishResult.html#structfield.session_key)
 //! which will match the server's session key upon a successful login.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, ServerLogin, ServerLoginParameters, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
@@ -433,7 +441,7 @@
 //! #   )?;
 //! # let server_login_start_result =
 //! #     ServerLogin::start(&mut server_rng, &server_setup, Some(password_file), client_login_start_result.message, b"alice@example.com", ServerLoginParameters::default())?;
-//! use opaque_ke::ClientLoginFinishParameters;
+//! use opaque_vx::ClientLoginFinishParameters;
 //!
 //! let client_login_finish_result = client_login_start_result.state.finish(
 //!     &mut client_rng,
@@ -450,32 +458,33 @@
 //! to produce an output consisting of the `session_key` sequence of bytes which
 //! will match the client's session key upon a successful login.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, ClientLoginFinishParameters, ServerLogin, ServerLoginParameters, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
@@ -547,32 +556,33 @@
 //! registration (with the `server_s_pk` field of
 //! [`ClientRegistrationFinishResult`]) matches this field during login.
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, ClientLoginFinishParameters, ServerLogin, ServerLoginParameters, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! // During registration, the client obtains a ClientRegistrationFinishResult with
@@ -644,32 +654,33 @@
 //! You can access the export key from the `export_key` field of
 //! [`ClientRegistrationFinishResult`] and [`ClientLoginFinishResult`].
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, ClientLoginFinishParameters, ServerLogin, ServerLoginParameters, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! // During registration...
@@ -727,20 +738,20 @@
 //! the ciphersuite as follows:
 //!
 //! ```ignore
-//! use opaque_ke::CipherSuite;
+//! use opaque_vx::CipherSuite;
 //!
 //! struct KemSuite;
 //!
 //! impl CipherSuite for KemSuite {
-//!     type OprfCs = opaque_ke::Ristretto255;
-//!     type KeyExchange = opaque_ke::TripleDhKem<opaque_ke::Ristretto255, sha2::Sha512, opaque_ke::ml_kem::MlKem768>;
-//!     type Ksf = opaque_ke::ksf::Identity;
+//!     type OprfCs = opaque_vx::Ristretto255;
+//!     type KeyExchange = opaque_vx::TripleDhKem<opaque_vx::Ristretto255, sha2::Sha512, opaque_vx::ml_kem::MlKem768>;
+//!     type Ksf = opaque_vx::ksf::Identity;
 //! }
 //! ```
 //!
 //! ## Custom Identifiers
 //!
-//! Typically when applications use OPAQUE to authenticate a client to a server,
+//! Typically, when applications use OPAQUE to authenticate a client to a server,
 //! the client has a registered username which is sent to the server to identify
 //! the corresponding password file established during registration. This
 //! username may or may not coincide with the server-side identifier; however,
@@ -756,32 +767,33 @@
 //! [`ClientRegistrationFinishParameters`] in [Client Registration
 //! Finish](#client-registration-finish):
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, Identifiers, ServerRegistration, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! let client_registration_finish_result = client_registration_start_result.state.finish(
@@ -802,32 +814,33 @@
 //! The same identifiers must also be supplied using [`ServerLoginParameters`]
 //! in [Server Login Start](#server-login-start):
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, CredentialFinalization, Identifiers, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::new(Identifiers { client: Some(b"Alice_the_Cryptographer"), server: Some(b"Facebook") }, None))?;
@@ -836,9 +849,9 @@
 //! #   &mut client_rng,
 //! #   b"password",
 //! # )?;
-//! # use opaque_ke::{ServerLogin, ServerLoginParameters};
+//! # use opaque_vx::{ServerLogin, ServerLoginParameters};
 //! # let password_file = ServerRegistration::<Default>::deserialize(&password_file_bytes)?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! let server_login_start_result = ServerLogin::start(
 //!     &mut server_rng,
 //!     &server_setup,
@@ -859,32 +872,33 @@
 //! as well as [`ClientLoginFinishParameters`] in [Client Login
 //! Finish](#client-login-finish):
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, ClientLoginFinishParameters, Identifiers, ServerLogin, ServerLoginParameters, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::new(Identifiers { client: Some(b"Alice_the_Cryptographer"), server: Some(b"Facebook") }, None))?;
@@ -918,32 +932,33 @@
 //! and in [`ServerLoginParameters`] in [Server Login
 //! Finish](#server-login-finish):
 //! ```
-//! # use opaque_ke::{
+//! # use opaque_vx::{
 //! #   errors::ProtocolError,
 //! #   ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, ClientLogin, ClientLoginFinishParameters, Identifiers, ServerLogin, ServerLoginParameters, CredentialFinalization, ServerSetup,
 //! #   ksf::Identity,
 //! # };
-//! # use opaque_ke::CipherSuite;
+//! # use opaque_vx::CipherSuite;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
-//! # use rand::{rngs::OsRng, RngCore};
-//! # let mut client_rng = OsRng;
+//! # use rand::{rngs::SysRng, Rng};
+//! # use rand_core::UnwrapErr;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
 //! #     b"password",
 //! # )?;
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<Default>::new(&mut server_rng);
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
 //! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut client_rng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::new(Identifiers { client: Some(b"Alice_the_Cryptographer"), server: Some(b"Facebook") }, None))?;
@@ -981,7 +996,7 @@
 //!
 //! A key exchange protocol typically allows for the specifying of shared
 //! "context" information between the two parties before the exchange is
-//! complete, so as to bind the integrity of application-specific data or
+//! complete, to bind the integrity of application-specific data or
 //! configuration parameters to the security of the key exchange. During the
 //! login phase, the client and server can specify this context using:
 //! - In [Server Login Start](#server-login-start), where the server can
@@ -1008,21 +1023,23 @@
 //! exposing the bytes of the private key to this library.
 //! ```
 //! # use generic_array::{GenericArray, typenum::U0};
-//! # use opaque_ke::{CipherSuite, ClientLogin, ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, keypair::{PrivateKey, PublicKey}, key_exchange::{KeyExchange, group::Group, tripledh::DiffieHellman}};
-//! # use rand::rngs::OsRng;
-//! # type Ristretto255 = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Group;
+//! # use opaque_vx::{CipherSuite, ClientLogin, ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, keypair::{PrivateKey, PublicKey}, key_exchange::{KeyExchange, group::Group, tripledh::DiffieHellman}};
+//! # use rand::rngs::SysRng;
+//! # use rand_core::UnwrapErr;
+//!
+//! type Ristretto255 = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Group;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[derive(Debug, thiserror::Error)]
 //! # #[error("test error")]
@@ -1034,9 +1051,9 @@
 //! #         Ok(<<Ristretto255 as Group>::Sk as DiffieHellman<Ristretto255>>::diffie_hellman(&self.0, pk.to_group_type()))
 //! #     }
 //! # }
-//! use opaque_ke::{ServerLogin, ServerLoginParameters, ServerSetup};
-//! use opaque_ke::keypair::{KeyPair, PrivateKeySerialization};
-//! use opaque_ke::errors::ProtocolError;
+//! use opaque_vx::{ServerLogin, ServerLoginParameters, ServerSetup};
+//! use opaque_vx::keypair::{KeyPair, PrivateKeySerialization};
+//! use opaque_vx::errors::ProtocolError;
 //!
 //! // Implement if you intend to use `ServerSetup::de/serialize` instead of `serde`.
 //! impl PrivateKeySerialization<Ristretto255> for YourRemoteKey {
@@ -1052,24 +1069,24 @@
 //!     }
 //! }
 //!
-//! # let sk = Ristretto255::random_sk(&mut OsRng);
+//! # let sk = Ristretto255::random_sk(&mut UnwrapErr(SysRng));
 //! # let pk = Ristretto255::public_key(&sk);
 //! # let pk = Ristretto255::serialize_pk(&pk);
 //! # let public_key = PublicKey::deserialize(&pk).unwrap();
 //! # let remote_key = YourRemoteKey(sk);
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! let keypair = KeyPair::new(remote_key, public_key);
 //! let server_setup = ServerSetup::<Default, YourRemoteKey>::new_with_key_pair(&mut server_rng, keypair);
 //!
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
-//! #     &mut OsRng,
+//! #     &mut UnwrapErr(SysRng),
 //! #     b"password",
 //! # )?;
 //! # let server_registration_start_result = ServerRegistration::<Default>::start(&server_setup, client_registration_start_result.message, b"alice@example.com")?;
-//! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut OsRng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
+//! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut UnwrapErr(SysRng), b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
 //! # let password_file_bytes = ServerRegistration::<Default>::finish(client_registration_finish_result.message).serialize();
 //! # let client_login_start_result = ClientLogin::<Default>::start(
-//! #   &mut OsRng,
+//! #   &mut UnwrapErr(SysRng),
 //! #   b"password",
 //! # )?;
 //! # let password_file = ServerRegistration::<Default>::deserialize(&password_file_bytes)?;
@@ -1102,24 +1119,26 @@
 //! # use digest::Output;
 //! # use generic_array::{GenericArray, typenum::U0};
 //! # use hkdf::Hkdf;
-//! # use opaque_ke::{CipherSuite, ClientLogin, ClientRegistration, ClientRegistrationFinishParameters, keypair::{PrivateKey, PublicKey}, key_exchange::{KeyExchange, group::Group, tripledh::DiffieHellman}};
-//! # use rand::rngs::OsRng;
-//! # use rand::RngCore;
-//! # type Ristretto255 = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Group;
+//! # use opaque_vx::{CipherSuite, ClientLogin, ClientRegistration, ClientRegistrationFinishParameters, keypair::{PrivateKey, PublicKey}, key_exchange::{KeyExchange, group::Group, tripledh::DiffieHellman}};
+//! # use rand::rngs::SysRng;
+//! # use rand::Rng;
+//! # use rand_core::UnwrapErr;
+//!
+//! type Ristretto255 = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Group;
 //! # type Hash = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Hash;
 //! # type OprfGroup = <<Default as CipherSuite>::OprfCs as voprf::CipherSuite>::Group;
 //! # struct Default;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for Default {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for Default {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
-//! #     type Ksf = opaque_ke::ksf::Identity;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # #[derive(Debug, thiserror::Error)]
 //! # #[error("test error")]
@@ -1143,9 +1162,9 @@
 //! #         Ok(<<Ristretto255 as Group>::Sk as DiffieHellman<Ristretto255>>::diffie_hellman(&self.0, pk.to_group_type()))
 //! #     }
 //! # }
-//! use opaque_ke::{ServerLogin, ServerLoginParameters, ServerRegistration, ServerSetup};
-//! use opaque_ke::keypair::{KeyPair, OprfSeedSerialization};
-//! use opaque_ke::errors::ProtocolError;
+//! use opaque_vx::{ServerLogin, ServerLoginParameters, ServerRegistration, ServerSetup};
+//! use opaque_vx::keypair::{KeyPair, OprfSeedSerialization};
+//! use opaque_vx::errors::ProtocolError;
 //!
 //! // Implement if you intend to use `ServerSetup::de/serialize` instead of `serde`.
 //! impl OprfSeedSerialization<sha2::Sha512, YourRemoteSecretsError> for YourRemoteSeed {
@@ -1160,20 +1179,20 @@
 //!     }
 //! }
 //!
-//! # let mut oprf_seed = YourRemoteSeed(GenericArray::default());
-//! # OsRng.fill_bytes(&mut oprf_seed.0);
-//! # let sk = Ristretto255::random_sk(&mut OsRng);
+//! # let mut oprf_seed = YourRemoteSeed(GenericArray::default().into_ha0_4());
+//! # UnwrapErr(SysRng).fill_bytes(&mut oprf_seed.0);
+//! # let sk = Ristretto255::random_sk(&mut UnwrapErr(SysRng));
 //! # let pk = Ristretto255::public_key(&sk);
 //! # let pk = Ristretto255::serialize_pk(&pk);
 //! # let public_key = PublicKey::deserialize(&pk).unwrap();
 //! # let remote_key = YourRemoteKey(sk);
-//! # let mut server_rng = OsRng;
+//! # let mut server_rng = UnwrapErr(SysRng);
 //! let keypair = KeyPair::new(remote_key, public_key);
 //! let server_setup = ServerSetup::<Default, YourRemoteKey, YourRemoteSeed>::new_with_key_pair_and_seed(&mut server_rng, keypair, oprf_seed);
 //!
 //! // Incoming registration ...
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
-//! #     &mut OsRng,
+//! #     &mut UnwrapErr(SysRng),
 //! #     b"password",
 //! # )?;
 //!
@@ -1189,12 +1208,12 @@
 //! )?;
 //!
 //! // Finish registration ...
-//! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut OsRng, b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
+//! # let client_registration_finish_result = client_registration_start_result.state.finish(&mut UnwrapErr(SysRng), b"password", server_registration_start_result.message, ClientRegistrationFinishParameters::default())?;
 //!
 //! // Incoming login ...
 //! # let password_file_bytes = ServerRegistration::<Default>::finish(client_registration_finish_result.message).serialize();
 //! # let client_login_start_result = ClientLogin::<Default>::start(
-//! #   &mut OsRng,
+//! #   &mut UnwrapErr(SysRng),
 //! #   b"password",
 //! # )?;
 //! # let password_file = ServerRegistration::<Default>::deserialize(&password_file_bytes)?;
@@ -1231,20 +1250,20 @@
 //! can be used.
 //! ```
 //! # use generic_array::GenericArray;
-//! use opaque_ke::ksf::Ksf;
+//! use opaque_vx::ksf::Ksf;
 //!
 //! #[derive(Default)]
 //! struct CustomKsf(scrypt::Params);
 //!
 //! // The Ksf trait must be implemented to be used in the ciphersuite.
 //! impl Ksf for CustomKsf {
-//!     fn hash<L: generic_array::ArrayLength<u8>>(
+//!     fn hash<L: generic_array::ArrayLength>(
 //!         &self,
 //!         input: GenericArray<u8, L>,
-//!     ) -> Result<GenericArray<u8, L>, opaque_ke::errors::InternalError> {
+//!     ) -> Result<GenericArray<u8, L>, opaque_vx::errors::InternalError> {
 //!         let mut output = GenericArray::<u8, L>::default();
 //!         scrypt::scrypt(&input, &[], &self.0, &mut output)
-//!             .map_err(|_| opaque_ke::errors::InternalError::KsfError)?;
+//!             .map_err(|_| opaque_vx::errors::InternalError::KsfError)?;
 //!
 //!         Ok(output)
 //!     }
@@ -1255,37 +1274,38 @@
 //! used by the KSF during registration and login. This can be especially
 //! helpful if the `Ksf` trait is already implemented.
 //! ```
-//! # use opaque_ke::CipherSuite;
-//! # use opaque_ke::ClientRegistration;
-//! # use opaque_ke::ClientRegistrationFinishParameters;
-//! # use opaque_ke::ServerSetup;
-//! # use opaque_ke::errors::ProtocolError;
-//! # use rand::rngs::OsRng;
-//! # use rand::RngCore;
+//! # use opaque_vx::CipherSuite;
+//! # use opaque_vx::ClientRegistration;
+//! # use opaque_vx::ClientRegistrationFinishParameters;
+//! # use opaque_vx::ServerSetup;
+//! # use opaque_vx::errors::ProtocolError;
+//! # use rand::rngs::SysRng;
+//! # use rand::Rng;
+//! # use rand_core::UnwrapErr;
 //! # use std::default::Default;
 //! # #[cfg(feature = "argon2")]
 //! # {
 //! # struct DefaultCipherSuite;
 //! # #[cfg(feature = "ristretto255")]
 //! # impl CipherSuite for DefaultCipherSuite {
-//! #     type OprfCs = opaque_ke::Ristretto255;
-//! #     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
+//! #     type OprfCs = opaque_vx::Ristretto255;
+//! #     type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
 //! #     type Ksf = argon2::Argon2<'static>;
 //! # }
 //! # #[cfg(not(feature = "ristretto255"))]
 //! # impl CipherSuite for DefaultCipherSuite {
 //! #     type OprfCs = p256::NistP256;
-//! #     type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
+//! #     type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
 //! #     type Ksf = argon2::Argon2<'static>;
 //! # }
 //! #
 //! # let password = b"password";
-//! # let mut rng = OsRng;
+//! # let mut rng = UnwrapErr(SysRng);
 //! # let server_setup = ServerSetup::<DefaultCipherSuite>::new(&mut rng);
-//! # let mut client_rng = OsRng;
+//! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result =
 //! #     ClientRegistration::<DefaultCipherSuite>::start(&mut client_rng, password)?;
-//! # use opaque_ke::ServerRegistration;
+//! # use opaque_vx::ServerRegistration;
 //! # let server_registration_start_result = ServerRegistration::<DefaultCipherSuite>::start(
 //! #     &server_setup,
 //! #     client_registration_start_result.message,
@@ -1384,6 +1404,7 @@ mod tests;
 #[cfg(feature = "argon2")]
 pub use argon2;
 pub use generic_array;
+pub use hybrid_array;
 #[cfg(feature = "kem")]
 pub use ml_kem;
 pub use rand;

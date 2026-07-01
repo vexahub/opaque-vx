@@ -23,13 +23,13 @@ use core::marker::PhantomData;
 use core::ops::Add;
 
 use derive_where::derive_where;
-use digest::core_api::BlockSizeUser;
-use digest::{Digest, Mac, Output, OutputSizeUser};
+use digest::block_api::{BlockSizeUser, CoreProxy, SmallBlockSizeUser};
+use digest::{Mac, Output, OutputSizeUser};
 use generic_array::sequence::Concat;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U256};
 use generic_array::{ArrayLength, GenericArray};
-use hmac::Hmac;
-use rand::{CryptoRng, RngCore};
+use hmac::{KeyInit, SimpleHmac};
+use rand::{CryptoRng, Rng};
 use subtle::{ConstantTimeEq, CtOption};
 use zeroize::Zeroize;
 
@@ -49,7 +49,7 @@ pub use crate::key_exchange::shared::{DiffieHellman, Ke1Message, Ke1State};
 use crate::key_exchange::shared::{derive_keys, generate_ke1, generate_nonce, transcript};
 use crate::keypair::{KeyPair, PrivateKey, PublicKey};
 use crate::opaque::Identifiers;
-use crate::serialization::{SliceExt, UpdateExt};
+use crate::serialization::{ConcatExt, SliceExt, UpdateExt};
 
 /// The SIGMA-I key exchange implementation
 ///
@@ -95,7 +95,7 @@ pub trait SignatureProtocol {
     /// The signature.
     type Signature: Clone + Zeroize;
     /// Length of a serialized [`Signature`](Self::Signature).
-    type SignatureLen: ArrayLength<u8>;
+    type SignatureLen: ArrayLength;
     /// The state required to run the verification. This is used to cache the
     /// pre-hash for curves that support that, otherwise the [`Message`] to
     /// verify is stored via [`CachedMessage`].
@@ -111,7 +111,7 @@ pub trait SignatureProtocol {
     /// The returned [`VerifyState`](Self::VerifyState) will be passed to
     /// [`verify()`](Self::verify) and must contain the necessary
     /// information to verify the incoming signature.
-    fn sign<R: CryptoRng + RngCore, CS: CipherSuite, KE: Group>(
+    fn sign<R: CryptoRng + Rng, CS: CipherSuite, KE: Group>(
         sk: &<Self::Group as Group>::Sk,
         rng: &mut R,
         message: &Message<CS, KE>,
@@ -202,8 +202,9 @@ pub struct Ke2State<CS: CipherSuite, SIG: SignatureProtocol, KE: Group> {
 pub struct Ke2Message<SIG: SignatureProtocol, KE: Group, KEH: Hash>
 where
     KEH::Core: ProxyHash,
-    <KEH::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<KEH::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<KEH>: ArrayLength,
 {
     server_nonce: GenericArray<u8, NonceLen>,
     #[derive_where(skip(Zeroize))]
@@ -223,37 +224,42 @@ where
 )]
 #[derive_where(Clone, ZeroizeOnDrop)]
 #[derive_where(Debug, Eq, Hash, Ord, PartialEq, PartialOrd; SIG::Signature)]
-pub struct Ke3Message<SIG: SignatureProtocol, KEH: OutputSizeUser> {
+pub struct Ke3Message<SIG: SignatureProtocol, KEH: OutputSizeUser>
+where
+    <KEH as OutputSizeUser>::OutputSize: ArrayLength,
+{
     signature: SIG::Signature,
     mac: Output<KEH>,
 }
 
-impl<SIG: SignatureProtocol, KE: 'static + Group, KEH: Hash> KeyExchange for SigmaI<SIG, KE, KEH>
+impl<SIG: SignatureProtocol, KE: 'static + Group, KEH: Hash + BlockSizeUser> KeyExchange
+    for SigmaI<SIG, KE, KEH>
 where
     KE::Sk: DiffieHellman<KE>,
     KEH::Core: ProxyHash,
-    <KEH::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<KEH::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<KEH>: ArrayLength,
 {
     type Group = SIG::Group;
     type Hash = KEH;
 
     type KE1State = Ke1State<KE>;
+    type KE2State<CS: CipherSuite> = Ke2State<CS, SIG, KE>;
     type KE1Message = Ke1Message<KE>;
     type KE2Builder<'a, CS: CipherSuite<KeyExchange = Self>> = Ke2Builder<'a, CS, KE>;
     type KE2BuilderData<'a, CS: 'static + CipherSuite> = &'a Message<'a, CS, KE>;
     type KE2BuilderInput<CS: CipherSuite> = (SIG::Signature, SIG::VerifyState<CS, KE>);
-    type KE2State<CS: CipherSuite> = Ke2State<CS, SIG, KE>;
     type KE2Message = Ke2Message<SIG, KE, KEH>;
     type KE3Message = Ke3Message<SIG, KEH>;
 
-    fn generate_ke1<R: RngCore + CryptoRng>(
+    fn generate_ke1<R: Rng + CryptoRng>(
         rng: &mut R,
     ) -> Result<GenerateKe1Result<Self>, ProtocolError> {
         generate_ke1(rng)
     }
 
-    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: RngCore + CryptoRng>(
+    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: Rng + CryptoRng>(
         rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -287,13 +293,13 @@ where
             &transcript_hasher.finalize(),
         )?;
 
-        let mut server_mac =
-            Hmac::<KEH>::new_from_slice(&derived_keys.km2).map_err(|_| InternalError::HmacError)?;
+        let mut server_mac = SimpleHmac::<KEH>::new_from_slice(&derived_keys.km2)
+            .map_err(|_| InternalError::HmacError)?;
         server_mac.update_iter(identifiers.server.iter());
         let server_mac = server_mac.finalize().into_bytes();
 
-        let mut client_mac =
-            Hmac::<KEH>::new_from_slice(&derived_keys.km3).map_err(|_| InternalError::HmacError)?;
+        let mut client_mac = SimpleHmac::<KEH>::new_from_slice(&derived_keys.km3)
+            .map_err(|_| InternalError::HmacError)?;
         client_mac.update_iter(identifiers.client.iter());
         let client_mac = client_mac.finalize().into_bytes();
 
@@ -331,7 +337,7 @@ where
         &builder.transcript
     }
 
-    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         builder: &Self::KE2Builder<'_, CS>,
         rng: &mut R,
         server_s_sk: &PrivateKey<Self::Group>,
@@ -363,7 +369,7 @@ where
         })
     }
 
-    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -397,8 +403,8 @@ where
             &transcript_hasher.finalize(),
         )?;
 
-        let mut server_mac =
-            Hmac::<KEH>::new_from_slice(&derived_keys.km2).map_err(|_| InternalError::HmacError)?;
+        let mut server_mac = SimpleHmac::<KEH>::new_from_slice(&derived_keys.km2)
+            .map_err(|_| InternalError::HmacError)?;
         server_mac.update_iter(identifiers.server.iter());
         let server_mac = server_mac.finalize().into_bytes();
 
@@ -406,8 +412,8 @@ where
             .then_some(())
             .ok_or(ProtocolError::InvalidLoginError)?;
 
-        let mut client_mac =
-            Hmac::<KEH>::new_from_slice(&derived_keys.km3).map_err(|_| InternalError::HmacError)?;
+        let mut client_mac = SimpleHmac::<KEH>::new_from_slice(&derived_keys.km3)
+            .map_err(|_| InternalError::HmacError)?;
         client_mac.update_iter(identifiers.client.iter());
         let client_mac = client_mac.finalize().into_bytes();
 
@@ -481,13 +487,14 @@ where
 impl<CS: CipherSuite, SIG: SignatureProtocol, KE: Group> Deserialize for Ke2State<CS, SIG, KE>
 where
     SIG::VerifyState<CS, KE>: Deserialize,
+    OutputSize<KeHash<CS>>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
             client_s_pk: PublicKey::deserialize_take(input)?,
-            session_key: input.take_array("session key")?,
-            verify_state: SIG::VerifyState::deserialize_take(input)?,
-            expected_mac: input.take_array("expected mac")?,
+            session_key: input.take_array("session key")?.into_ha0_4(),
+            verify_state: SIG::VerifyState::<CS, KE>::deserialize_take(input)?,
+            expected_mac: input.take_array("expected mac")?.into_ha0_4(),
         })
     }
 }
@@ -502,37 +509,44 @@ type VerifyStateLen<CS, SIG: SignatureProtocol, KE> = <SIG::VerifyState<CS, KE> 
 impl<CS: CipherSuite, SIG: SignatureProtocol, KE: Group> Serialize for Ke2State<CS, SIG, KE>
 where
     SIG::VerifyState<CS, KE>: Serialize,
+    OutputSize<KeHash<CS>>: ArrayLength,
     // Ke2State: ((SigPk + Hash) + VerifyState) + Hash
     <SIG::Group as Group>::PkLen: Add<OutputSize<KeHash<CS>>>,
     Sum<<SIG::Group as Group>::PkLen, OutputSize<KeHash<CS>>>:
-        ArrayLength<u8> + Add<VerifyStateLen<CS, SIG, KE>>,
+        ArrayLength + Add<VerifyStateLen<CS, SIG, KE>>,
     Sum<Sum<<SIG::Group as Group>::PkLen, OutputSize<KeHash<CS>>>, VerifyStateLen<CS, SIG, KE>>:
-        ArrayLength<u8> + Add<OutputSize<KeHash<CS>>>,
-    Ke2StateLen<CS, SIG, KE>: ArrayLength<u8>,
+        ArrayLength + Add<OutputSize<KeHash<CS>>>,
+    Ke2StateLen<CS, SIG, KE>: ArrayLength,
 {
     type Len = Ke2StateLen<CS, SIG, KE>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.client_s_pk
-            .serialize()
-            .concat(self.session_key.clone())
-            .concat(self.verify_state.serialize())
-            .concat(self.expected_mac.clone())
+        Concat::concat(
+            Concat::concat(
+                Concat::concat(
+                    self.client_s_pk.serialize(),
+                    GenericArray::from_slice(self.session_key.as_slice()).clone(),
+                ),
+                self.verify_state.serialize(),
+            ),
+            GenericArray::from_slice(self.expected_mac.as_slice()).clone(),
+        )
     }
 }
 
 impl<SIG: SignatureProtocol, KE: Group, KEH: Hash> Deserialize for Ke2Message<SIG, KE, KEH>
 where
     KEH::Core: ProxyHash,
-    <KEH::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<KEH::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<KEH>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
             server_nonce: input.take_array("server nonce")?,
             server_e_pk: PublicKey::deserialize_take(input)?,
             signature: SIG::deserialize_take_signature(input)?,
-            mac: input.take_array("mac")?,
+            mac: input.take_array("mac")?.into_ha0_4(),
         })
     }
 }
@@ -540,34 +554,36 @@ where
 impl<SIG: SignatureProtocol, KE: Group, KEH: Hash> Serialize for Ke2Message<SIG, KE, KEH>
 where
     KEH::Core: ProxyHash,
-    <KEH::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<KEH::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<KEH>: ArrayLength,
     // Ke2Message: ((Nonce + KePk) + Signature) + Hash
     NonceLen: Add<KE::PkLen>,
-    Sum<NonceLen, KE::PkLen>: ArrayLength<u8> + Add<SIG::SignatureLen>,
-    Sum<Sum<NonceLen, KE::PkLen>, SIG::SignatureLen>: ArrayLength<u8> + Add<OutputSize<KEH>>,
-    Sum<Sum<Sum<NonceLen, KE::PkLen>, SIG::SignatureLen>, OutputSize<KEH>>: ArrayLength<u8>,
+    Sum<NonceLen, KE::PkLen>: ArrayLength + Add<SIG::SignatureLen>,
+    Sum<Sum<NonceLen, KE::PkLen>, SIG::SignatureLen>: ArrayLength + Add<OutputSize<KEH>>,
+    Sum<Sum<Sum<NonceLen, KE::PkLen>, SIG::SignatureLen>, OutputSize<KEH>>: ArrayLength,
 {
     type Len = Sum<Sum<Sum<NonceLen, KE::PkLen>, SIG::SignatureLen>, OutputSize<KEH>>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
         self.server_nonce
-            .concat(self.server_e_pk.serialize())
-            .concat(SIG::serialize_signature(&self.signature))
-            .concat(self.mac.clone())
+            .cat(self.server_e_pk.serialize())
+            .cat(SIG::serialize_signature(&self.signature))
+            .cat(GenericArray::from_slice(self.mac.as_slice()).clone())
     }
 }
 
 impl<SIG: SignatureProtocol, KEH: Hash> Deserialize for Ke3Message<SIG, KEH>
 where
     KEH::Core: ProxyHash,
-    <KEH::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<KEH::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<KEH>: ArrayLength,
 {
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
             signature: SIG::deserialize_take_signature(input)?,
-            mac: input.take_array("mac")?,
+            mac: input.take_array("mac")?.into_ha0_4(),
         })
     }
 }
@@ -575,15 +591,19 @@ where
 impl<SIG: SignatureProtocol, KEH: Hash> Serialize for Ke3Message<SIG, KEH>
 where
     KEH::Core: ProxyHash,
-    <KEH::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<KEH::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<KEH as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<KEH>: ArrayLength,
     // Ke2Message: Signature + Hash
     SIG::SignatureLen: Add<OutputSize<KEH>>,
-    Sum<SIG::SignatureLen, OutputSize<KEH>>: ArrayLength<u8>,
+    Sum<SIG::SignatureLen, OutputSize<KEH>>: ArrayLength,
 {
     type Len = Sum<SIG::SignatureLen, OutputSize<KEH>>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        SIG::serialize_signature(&self.signature).concat(self.mac.clone())
+        Concat::concat(
+            SIG::serialize_signature(&self.signature),
+            GenericArray::from_slice(self.mac.as_slice()).clone(),
+        )
     }
 }

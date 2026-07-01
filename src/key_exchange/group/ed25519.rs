@@ -18,9 +18,8 @@ pub use ed25519_dalek;
 use ed25519_dalek::hazmat::ExpandedSecretKey;
 use ed25519_dalek::{SecretKey, Sha512};
 use generic_array::GenericArray;
-use generic_array::sequence::Concat;
 use generic_array::typenum::{U32, U64};
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::Group;
@@ -30,7 +29,7 @@ use crate::key_exchange::sigma_i::hash_eddsa::implementation::HashEddsaImpl;
 use crate::key_exchange::sigma_i::pure_eddsa::implementation::PureEddsaImpl;
 pub use crate::key_exchange::sigma_i::shared::PreHash;
 use crate::key_exchange::sigma_i::{CachedMessage, Message, MessageBuilder};
-use crate::serialization::{SliceExt, UpdateExt};
+use crate::serialization::{ConcatExt, SliceExt, UpdateExt};
 
 /// Implementation for Ed25519.
 pub struct Ed25519;
@@ -46,12 +45,12 @@ impl Group for Ed25519 {
     }
 
     fn deserialize_take_pk(bytes: &mut &[u8]) -> Result<Self::Pk, ProtocolError> {
-        let bytes = bytes.take_array("public key")?;
+        let bytes = bytes.take_array::<U32>("public key")?;
 
         VerifyingKey::from_bytes(bytes.into())
     }
 
-    fn random_sk<R: RngCore + CryptoRng>(rng: &mut R) -> Self::Sk {
+    fn random_sk<R: Rng + CryptoRng>(rng: &mut R) -> Self::Sk {
         let mut sk = <[u8; 32]>::default();
         rng.fill_bytes(&mut sk);
 
@@ -72,7 +71,7 @@ impl Group for Ed25519 {
 
     fn deserialize_take_sk(bytes: &mut &[u8]) -> Result<Self::Sk, ProtocolError> {
         Ok(SigningKey::from_bytes(
-            bytes.take_array("secret key")?.into(),
+            bytes.take_array::<U32>("secret key")?.into(),
         ))
     }
 }
@@ -399,7 +398,7 @@ pub struct Signature {
 }
 
 impl Signature {
-    /// Expects the `R` and `s` components of a Ed25519 signature with no added
+    /// Expects the `R` and `s` components of an Ed25519 signature with no added
     /// framing.
     pub fn from_slice(mut bytes: &[u8]) -> Result<Self, ProtocolError> {
         Self::deserialize_take(&mut bytes)
@@ -407,9 +406,9 @@ impl Signature {
 
     fn deserialize_take(bytes: &mut &[u8]) -> Result<Self, ProtocolError> {
         #[allow(non_snake_case)]
-        let R = CompressedEdwardsY(bytes.take_array("signature R")?.into());
+        let R = CompressedEdwardsY(bytes.take_array::<U32>("signature R")?.into());
 
-        let s = Scalar::from_canonical_bytes(bytes.take_array("signature s")?.into())
+        let s = Scalar::from_canonical_bytes(bytes.take_array::<U32>("signature s")?.into())
             .into_option()
             .ok_or(ProtocolError::SerializationError)?;
 
@@ -417,7 +416,8 @@ impl Signature {
     }
 
     fn serialize(&self) -> GenericArray<u8, U64> {
-        GenericArray::from(self.R.0).concat(GenericArray::from(self.s.to_bytes()))
+        GenericArray::<u8, U32>::from(self.R.0)
+            .cat(GenericArray::<u8, U32>::from(self.s.to_bytes()))
     }
 }
 
@@ -433,17 +433,18 @@ mod test {
     use std::iter;
 
     use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
-    use rand::rngs::OsRng;
+    use rand::rngs::SysRng;
+    use rand_core::UnwrapErr;
 
     use super::*;
 
     #[test]
     fn pure_eddsa() {
         let mut message = [0; 1024];
-        OsRng.fill_bytes(&mut message);
+        UnwrapErr(SysRng).fill_bytes(&mut message);
 
         let mut sk = SecretKey::default();
-        OsRng.fill_bytes(&mut sk);
+        UnwrapErr(SysRng).fill_bytes(&mut sk);
         let signing_key = SigningKey::from_bytes(&sk);
 
         let signature = signing_key.sign(&message);
@@ -472,12 +473,12 @@ mod test {
     #[test]
     fn hash_eddsa() {
         let mut message = [0; 1024];
-        OsRng.fill_bytes(&mut message);
+        UnwrapErr(SysRng).fill_bytes(&mut message);
         let message = Sha512::new_with_prefix(message);
         let pre_hash = message.clone().finalize();
 
         let mut sk = SecretKey::default();
-        OsRng.fill_bytes(&mut sk);
+        UnwrapErr(SysRng).fill_bytes(&mut sk);
         let signing_key = SigningKey::from_bytes(&sk);
 
         let signature = signing_key.sign_prehashed(message.clone(), None).unwrap();

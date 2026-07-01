@@ -8,18 +8,16 @@
 
 use core::ops::Add;
 
+use crate::errors::ProtocolError;
 use digest::Update;
 use generic_array::sequence::Concat;
 use generic_array::typenum::Sum;
 use generic_array::{ArrayLength, GenericArray};
-
-use crate::errors::ProtocolError;
+use hybrid_array::{Array, ArraySize};
 
 // Corresponds to the I2OSP() function from RFC8017
-pub(crate) fn i2osp<L: ArrayLength<u8>>(
-    input: usize,
-) -> Result<GenericArray<u8, L>, ProtocolError> {
-    const SIZEOF_USIZE: usize = core::mem::size_of::<usize>();
+pub(crate) fn i2osp<L: ArrayLength>(input: usize) -> Result<GenericArray<u8, L>, ProtocolError> {
+    const SIZEOF_USIZE: usize = size_of::<usize>();
 
     // Make sure input fits in output.
     if (SIZEOF_USIZE as u32 - input.leading_zeros() / 8) > L::U32 {
@@ -35,12 +33,12 @@ pub(crate) fn i2osp<L: ArrayLength<u8>>(
 // Corresponds to the OS2IP() function from RFC8017
 #[cfg(test)]
 pub(crate) fn os2ip(input: &[u8]) -> Result<usize, ProtocolError> {
-    if input.len() > core::mem::size_of::<usize>() {
+    if input.len() > size_of::<usize>() {
         return Err(ProtocolError::SerializationError);
     }
 
-    let mut output_array = [0u8; core::mem::size_of::<usize>()];
-    output_array[core::mem::size_of::<usize>() - input.len()..].copy_from_slice(input);
+    let mut output_array = [0u8; size_of::<usize>()];
+    output_array[size_of::<usize>() - input.len()..].copy_from_slice(input);
     Ok(usize::from_be_bytes(output_array))
 }
 
@@ -69,14 +67,14 @@ impl<T: Update> UpdateExt for T {
 }
 
 pub(crate) trait SliceExt {
-    fn take_array<L: ArrayLength<u8>>(
+    fn take_array<L: ArrayLength + ArraySize>(
         self: &mut &Self,
         name: &'static str,
     ) -> Result<GenericArray<u8, L>, ProtocolError>;
 }
 
 impl SliceExt for [u8] {
-    fn take_array<L: ArrayLength<u8>>(
+    fn take_array<L: ArrayLength + ArraySize>(
         self: &mut &Self,
         name: &'static str,
     ) -> Result<GenericArray<u8, L>, ProtocolError> {
@@ -90,23 +88,24 @@ impl SliceExt for [u8] {
 
         let (front, back) = self.split_at(L::USIZE);
         *self = back;
-        Ok(GenericArray::clone_from_slice(front))
+        let arr: Array<u8, L> = Array::try_from(front).unwrap();
+        Ok(GenericArray::from(arr))
     }
 }
 
-pub(crate) trait GenericArrayExt<O: ArrayLength<u8>> {
-    type Output: ArrayLength<u8>;
+pub(crate) trait GenericArrayExt<O: ArrayLength> {
+    type Output: ArrayLength;
 
     /// This allows us to concat two [`GenericArray`]s but with `where` bounds
     /// `Other + Self`. Because sometimes `Self + Other` doesn't imply the
-    /// bounds and we have to add them to every call.
+    /// bounds, and we have to add them to every call.
     fn concat_ext(&self, rest: &GenericArray<u8, O>) -> GenericArray<u8, Self::Output>;
 }
 
-impl<L: ArrayLength<u8>, O: ArrayLength<u8>> GenericArrayExt<O> for GenericArray<u8, L>
+impl<L: ArrayLength, O: ArrayLength> GenericArrayExt<O> for GenericArray<u8, L>
 where
     O: Add<L>,
-    Sum<O, L>: ArrayLength<u8>,
+    Sum<O, L>: ArrayLength,
 {
     type Output = Sum<O, L>;
 
@@ -116,6 +115,23 @@ where
         output[L::USIZE..].copy_from_slice(other);
 
         output
+    }
+}
+
+pub(crate) trait ConcatExt<N: ArrayLength>: Sized {
+    fn cat<M: ArrayLength>(self, other: GenericArray<u8, M>) -> GenericArray<u8, Sum<N, M>>
+    where
+        N: Add<M>,
+        Sum<N, M>: ArrayLength;
+}
+
+impl<N: ArrayLength> ConcatExt<N> for GenericArray<u8, N> {
+    fn cat<M: ArrayLength>(self, other: GenericArray<u8, M>) -> GenericArray<u8, Sum<N, M>>
+    where
+        N: Add<M>,
+        Sum<N, M>: ArrayLength,
+    {
+        Concat::concat(self, other)
     }
 }
 

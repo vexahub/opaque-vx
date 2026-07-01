@@ -22,22 +22,22 @@
 //! over "the wire" to the server. These bytes are serialized and explicitly
 //! annotated in the below functions.
 
-use std::collections::HashMap;
-use std::process::exit;
-
-use opaque_ke::argon2::Argon2;
-use opaque_ke::ciphersuite::CipherSuite;
-use opaque_ke::generic_array::GenericArray;
-use opaque_ke::rand::rngs::OsRng;
-use opaque_ke::{
+use opaque_vx::argon2::Argon2;
+use opaque_vx::ciphersuite::CipherSuite;
+use opaque_vx::hybrid_array::Array;
+use opaque_vx::rand::rngs::SysRng;
+use opaque_vx::{
     ClientLogin, ClientLoginFinishParameters, ClientRegistration,
     ClientRegistrationFinishParameters, CredentialFinalization, CredentialRequest,
     CredentialResponse, RegistrationRequest, RegistrationResponse, RegistrationUpload, ServerLogin,
     ServerLoginParameters, ServerRegistration, ServerRegistrationLen, ServerSetup,
 };
+use rand_core::UnwrapErr;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory;
+use std::collections::HashMap;
+use std::process::exit;
 
 // The ciphersuite trait allows to specify the underlying primitives that will
 // be used in the OPAQUE protocol
@@ -46,8 +46,8 @@ struct DefaultCipherSuite;
 
 #[cfg(feature = "ristretto255")]
 impl CipherSuite for DefaultCipherSuite {
-    type OprfCs = opaque_ke::Ristretto255;
-    type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, sha2::Sha512>;
+    type OprfCs = opaque_vx::Ristretto255;
+    type KeyExchange = opaque_vx::TripleDh<opaque_vx::Ristretto255, sha2::Sha512>;
 
     type Ksf = Argon2<'static>;
 }
@@ -55,7 +55,7 @@ impl CipherSuite for DefaultCipherSuite {
 #[cfg(not(feature = "ristretto255"))]
 impl CipherSuite for DefaultCipherSuite {
     type OprfCs = p256::NistP256;
-    type KeyExchange = opaque_ke::TripleDh<p256::NistP256, sha2::Sha256>;
+    type KeyExchange = opaque_vx::TripleDh<p256::NistP256, sha2::Sha256>;
 
     type Ksf = Argon2<'static>;
 }
@@ -65,8 +65,8 @@ fn account_registration(
     server_setup: &ServerSetup<DefaultCipherSuite>,
     username: String,
     password: String,
-) -> GenericArray<u8, ServerRegistrationLen<DefaultCipherSuite>> {
-    let mut client_rng = OsRng;
+) -> Array<u8, ServerRegistrationLen<DefaultCipherSuite>> {
+    let mut client_rng = UnwrapErr(SysRng);
     let client_registration_start_result =
         ClientRegistration::<DefaultCipherSuite>::start(&mut client_rng, password.as_bytes())
             .unwrap();
@@ -100,7 +100,7 @@ fn account_registration(
     let password_file = ServerRegistration::finish(
         RegistrationUpload::<DefaultCipherSuite>::deserialize(&message_bytes).unwrap(),
     );
-    password_file.serialize()
+    password_file.serialize().into_ha0_4()
 }
 
 // Password-based login between a client and server
@@ -110,7 +110,7 @@ fn account_login(
     password: String,
     password_file_bytes: &[u8],
 ) -> bool {
-    let mut client_rng = OsRng;
+    let mut client_rng = UnwrapErr(SysRng);
     let client_login_start_result =
         ClientLogin::<DefaultCipherSuite>::start(&mut client_rng, password.as_bytes()).unwrap();
     let credential_request_bytes = client_login_start_result.message.serialize();
@@ -119,7 +119,7 @@ fn account_login(
 
     let password_file =
         ServerRegistration::<DefaultCipherSuite>::deserialize(password_file_bytes).unwrap();
-    let mut server_rng = OsRng;
+    let mut server_rng = UnwrapErr(SysRng);
     let server_login_start_result = ServerLogin::start(
         &mut server_rng,
         server_setup,
@@ -161,12 +161,12 @@ fn account_login(
 }
 
 fn main() {
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let server_setup = ServerSetup::<DefaultCipherSuite>::new(&mut rng);
 
     let mut rl = Editor::<(), _>::new().unwrap();
     let mut registered_users =
-        HashMap::<String, GenericArray<u8, ServerRegistrationLen<DefaultCipherSuite>>>::new();
+        HashMap::<String, Array<u8, ServerRegistrationLen<DefaultCipherSuite>>>::new();
     loop {
         println!(
             "\nCurrently registered usernames: {:?}\n",

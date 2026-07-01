@@ -12,7 +12,7 @@
 use core::marker::PhantomData;
 
 use generic_array::GenericArray;
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 use zeroize::Zeroize;
 
 use self::implementation::HashEddsaImpl;
@@ -33,7 +33,7 @@ impl<G: HashEddsaImpl> SignatureProtocol for HashEddsa<G> {
     type SignatureLen = G::SignatureLen;
     type VerifyState<CS: CipherSuite, KE: Group> = G::VerifyState<CS, KE>;
 
-    fn sign<'a, R: CryptoRng + RngCore, CS: CipherSuite, KE: Group>(
+    fn sign<'a, R: CryptoRng + Rng, CS: CipherSuite, KE: Group>(
         sk: &<Self::Group as Group>::Sk,
         _: &mut R,
         message: &Message<CS, KE>,
@@ -66,7 +66,7 @@ pub(in super::super) mod implementation {
 
     pub trait HashEddsaImpl: Group {
         type Signature: Clone + Zeroize;
-        type SignatureLen: ArrayLength<u8>;
+        type SignatureLen: ArrayLength;
         type VerifyState<CS: CipherSuite, KE: Group>: Clone + Zeroize;
 
         fn sign<CS: CipherSuite, KE: Group>(

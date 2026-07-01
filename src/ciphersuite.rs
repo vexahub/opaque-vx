@@ -11,7 +11,7 @@
 
 use core::ops::Add;
 
-use digest::core_api::{BlockSizeUser, CoreProxy};
+use digest::block_api::{CoreProxy, EagerHash, SmallBlockSizeUser};
 use generic_array::ArrayLength;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U256};
 
@@ -30,16 +30,18 @@ use crate::opaque::MaskedResponseLen;
 /// * `Ksf`: A key stretching function, typically used for password hashing
 pub trait CipherSuite
 where
-    OprfHash<Self>: Hash,
+    OprfHash<Self>: Hash + EagerHash,
     <OprfHash<Self> as CoreProxy>::Core: ProxyHash,
-    <<OprfHash<Self> as CoreProxy>::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<<OprfHash<Self> as CoreProxy>::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<OprfHash<Self> as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<OprfHash<Self> as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
     // Envelope: Nonce + Hash
     // MaskedResponse: (Nonce + Hash) + KePk
-    OutputSize<OprfHash<Self>>: Add<NonceLen>,
-    Sum<OutputSize<OprfHash<Self>>, NonceLen>:
-        ArrayLength<u8> + Add<<KeGroup<Self> as Group>::PkLen>,
-    MaskedResponseLen<Self>: ArrayLength<u8>,
+    OutputSize<OprfHash<Self>>: Add<NonceLen> + ArrayLength,
+    Sum<OutputSize<OprfHash<Self>>, NonceLen>: ArrayLength + Add<<KeGroup<Self> as Group>::PkLen>,
+    MaskedResponseLen<Self>: ArrayLength,
+    // hybrid-array interop bounds
+    <OprfGroup<Self> as voprf::Group>::ScalarLen: ArrayLength,
+    <OprfGroup<Self> as voprf::Group>::ElemLen: ArrayLength,
 {
     /// A VOPRF ciphersuite, see [`voprf::CipherSuite`].
     type OprfCs: voprf::CipherSuite;

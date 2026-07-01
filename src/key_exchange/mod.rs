@@ -21,11 +21,12 @@ use core::ops::Add;
 
 use derive_where::derive_where;
 use digest::Output;
-use digest::core_api::{BlockSizeUser, CoreProxy};
+use digest::block_api::{CoreProxy, SmallBlockSizeUser};
 use generic_array::sequence::Concat;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U2, U256};
 use generic_array::{ArrayLength, GenericArray};
-use rand::{CryptoRng, RngCore};
+use hybrid_array::Array;
+use rand::{CryptoRng, Rng};
 use voprf::{BlindedElement, EvaluationElement};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -33,7 +34,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::ciphersuite::KeHash;
 use crate::ciphersuite::{CipherSuite, OprfGroup};
 use crate::errors::ProtocolError;
-use crate::hash::{Hash, ProxyHash};
+use crate::hash::{Hash, OutputSize, ProxyHash};
 use crate::key_exchange::group::Group;
 use crate::key_exchange::shared::{NonceLen, STR_CONTEXT};
 use crate::keypair::{PrivateKey, PublicKey};
@@ -44,8 +45,9 @@ use crate::serialization::{SliceExt, i2osp};
 pub trait KeyExchange
 where
     <Self::Hash as CoreProxy>::Core: ProxyHash,
-    <<Self::Hash as CoreProxy>::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<<Self::Hash as CoreProxy>::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    <<Self::Hash as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
+    Le<<<Self::Hash as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
+    OutputSize<Self::Hash>: ArrayLength,
 {
     /// The group used for the key exchange.
     type Group: Group;
@@ -71,12 +73,12 @@ where
 
     /// Client generates [`KE1Message`](Self::KE1Message) and
     /// [`KE1State`](Self::KE1State).
-    fn generate_ke1<R: RngCore + CryptoRng>(
+    fn generate_ke1<R: Rng + CryptoRng>(
         rng: &mut R,
     ) -> Result<GenerateKe1Result<Self>, ProtocolError>;
 
     /// Server generates [`KE2Builder`](Self::KE2Builder).
-    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: RngCore + CryptoRng>(
+    fn ke2_builder<'a, CS: CipherSuite<KeyExchange = Self>, R: Rng + CryptoRng>(
         rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -92,7 +94,7 @@ where
     ) -> Self::KE2BuilderData<'a, CS>;
 
     /// Server generates the input without a remote key.
-    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke2_input<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         builder: &Self::KE2Builder<'_, CS>,
         rng: &mut R,
         server_s_sk: &PrivateKey<Self::Group>,
@@ -107,7 +109,7 @@ where
 
     /// Client generates [`KE3Message`](Self::KE3Message) and the session key.
     #[allow(clippy::too_many_arguments)]
-    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + RngCore>(
+    fn generate_ke3<CS: CipherSuite<KeyExchange = Self>, R: CryptoRng + Rng>(
         rng: &mut R,
         credential_request: SerializedCredentialRequest<CS>,
         ke1_message: Self::KE1Message,
@@ -137,7 +139,7 @@ where
 )]
 #[derive_where(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Zeroize)]
 pub struct SerializedCredentialRequest<CS: CipherSuite>(
-    GenericArray<u8, <OprfGroup<CS> as voprf::Group>::ElemLen>,
+    Array<u8, <OprfGroup<CS> as voprf::Group>::ElemLen>,
 );
 
 impl<CS: CipherSuite> SerializedCredentialRequest<CS> {
@@ -154,17 +156,20 @@ impl<CS: CipherSuite> SerializedCredentialRequest<CS> {
     /// Returns a [`SerializedCredentialRequest`] deserialized from the given
     /// `bytes`.
     pub fn deserialize_take(bytes: &mut &[u8]) -> Result<Self, ProtocolError> {
-        Ok(Self(bytes.take_array("blinded element")?))
+        Ok(Self(bytes.take_array("blinded element")?.into_ha0_4()))
     }
 }
 
 type SerializedCredentialRequestLen<CS: CipherSuite> = <OprfGroup<CS> as voprf::Group>::ElemLen;
 
-impl<CS: CipherSuite> Serialize for SerializedCredentialRequest<CS> {
+impl<CS: CipherSuite> Serialize for SerializedCredentialRequest<CS>
+where
+    <OprfGroup<CS> as voprf::Group>::ElemLen: ArrayLength,
+{
     type Len = SerializedCredentialRequestLen<CS>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.0.clone()
+        GenericArray::from_slice(self.0.as_slice()).clone()
     }
 }
 
@@ -176,7 +181,7 @@ impl<CS: CipherSuite> Serialize for SerializedCredentialRequest<CS> {
 )]
 #[derive_where(Clone, Debug, Eq, Hash, PartialEq, Zeroize)]
 pub struct SerializedCredentialResponse<CS: CipherSuite> {
-    evaluation_element: GenericArray<u8, <OprfGroup<CS> as voprf::Group>::ElemLen>,
+    evaluation_element: Array<u8, <OprfGroup<CS> as voprf::Group>::ElemLen>,
     masking_nonce: GenericArray<u8, NonceLen>,
     masked_response: MaskedResponse<CS>,
 }
@@ -207,7 +212,7 @@ impl<CS: CipherSuite> SerializedCredentialResponse<CS> {
     /// `bytes`.
     pub fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
         Ok(Self {
-            evaluation_element: input.take_array("evaluation element")?,
+            evaluation_element: input.take_array("evaluation element")?.into_ha0_4(),
             masking_nonce: input.take_array("masking nonce")?,
             masked_response: MaskedResponse::deserialize_take(input)?,
         })
@@ -221,16 +226,21 @@ impl<CS: CipherSuite> Serialize for SerializedCredentialResponse<CS>
 where
     <OprfGroup<CS> as voprf::Group>::ElemLen: Add<NonceLen>,
     Sum<<OprfGroup<CS> as voprf::Group>::ElemLen, NonceLen>:
-        ArrayLength<u8> + Add<MaskedResponseLen<CS>>,
-    SerializedCredentialResponseLen<CS>: ArrayLength<u8>,
+        ArrayLength + Add<MaskedResponseLen<CS>>,
+    SerializedCredentialResponseLen<CS>: ArrayLength,
 {
     type Len = SerializedCredentialResponseLen<CS>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.evaluation_element
-            .clone()
-            .concat(self.masking_nonce)
-            .concat(self.masked_response.serialize())
+        let elem = GenericArray::<u8, <OprfGroup<CS> as voprf::Group>::ElemLen>::from_slice(
+            self.evaluation_element.as_slice(),
+        )
+        .clone();
+
+        Concat::concat(
+            Concat::concat(elem, self.masking_nonce),
+            self.masked_response.serialize(),
+        )
     }
 }
 
@@ -359,7 +369,7 @@ pub trait Deserialize: Sized {
 /// Serialization trait for key exchange types.
 pub trait Serialize {
     /// The length of the serialized types.
-    type Len: ArrayLength<u8>;
+    type Len: ArrayLength;
 
     /// Serialize [`Self`] to a fixed-length byte array.
     fn serialize(&self) -> GenericArray<u8, Self::Len>;

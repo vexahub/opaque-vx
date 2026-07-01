@@ -1,67 +1,112 @@
 # Changelog
 
+## 1.0.0-pre.0 (June 29, 2026)
+
+Forked from [facebook/opaque-ke](https://github.com/facebook/opaque-ke/) at `4.1.0-pre.2`.
+
+* Upgraded dependencies:
+    * `ml-kem`: `0.3.0-rc.0` to `0.3`
+    * `digest`: `0.10` to `0.11`
+    * `elliptic-curve`: `0.13` to `0.14`
+    * `curve25519-dalek`: `4` to `5.0.0-rc`
+    * `ed25519-dalek`: `2` to `3.0.0-rc`
+    * `ecdsa`: `0.16` to `0.17.0-rc.23`
+    * `hkdf`: `0.12` to `0.13`
+    * `hmac`: `0.12` to `0.13`
+    * `rand`: `0.8` to `0.10`
+    * `rand_chacha`: `0.3` to `0.10`
+    * `rfc6979`: `0.4` to `0.6` (now internal to `ecdsa`)
+    * `sha2`: `0.10` to `0.11`
+    * `getrandom`: `0.2` to `0.4` (WASM target)
+    * `p256`/`p384`/`p521`: `0.13` to `0.14.0-rc.15` (dev-dependency)
+    * `cryptoki`: `0.9` to `0.12` (dev-dependency)
+    * `rustyline`: `17` to `18` (dev-dependency)
+    * `scrypt`: `0.11` to `0.12` (dev-dependency)
+    * `voprf` replaced by `voprf-vx 1.0.0-pre.0`
+* Bump `generic-array 0.14` to `generic-array 1.4` with `hybrid-array 0.4` interop
+* Added `hybrid-array 0.4` for interop
+* Added `ConcatExt` trait to disambiguate from `[T]::concat`
+* Added **`cryptography`** to `categories` in `Cargo.toml`
+* Replaced `Hmac` with `SimpleHmac` throughout for `digest 0.11` compatibility
+* Replaced `bincode` with `postcard` for `no_std` serialization
+* Re-exported `hybrid_array` from crate root
+* Updated `Hash` trait to remove `BlockSizeUser` bounds incompatible with `digest 0.11`
+* Updated `GroupEncoding Repr` bound to `hybrid_array::Array`
+* Fixed `MaskedResponse::serialize` field ordering to match deserialization
+* Increased **MSRV** to **1.90**
+* Renamed crate to `opaque-vx`
+* Removed direct `rfc6979` dependency (handled by `ecdsa` internally)
+* Removed unstable `rustfmt` configurations for **Rust stable** compatibility
+* Removed Facebook-specific contributions (CLA, bounty program) from `CONTRIBUTING.md`
+* Removed `v3` to `v4` migration test (no longer relevant for fork)
+
 ## 4.1.0-pre.2 (March 26, 2026)
+
 * Upgraded ml-kem from 0.2 to 0.3.0-rc.0
 * Increased MSRV to 1.87
 
 ## 4.1.0-pre.1 (November 17, 2025)
+
 * Added ml-kem re-export behind the kem feature
 
 ## 4.1.0-pre.0 (November 11, 2025)
+
 * Fixed dependency exporting for the rand crate
 * Added TripleDhKem key exchange protocol
 
 ## 4.0.1 (October 30, 2025)
+
 * Fixing docs building issue
 
 ## 4.0.0 (October 23, 2025)
+
 * Increased MSRV to 1.83
 * Synced implementation with RFC 9807 (no core protocol changes)
 * Added a SIGMA-I key exchange implementation
 * Removed KeGroup type from the Ciphersuite trait (now part of KeyExchange type)
-  * **Breaking: existing Ciphersuite trait definitions need to be updated**
+    * **Breaking: existing Ciphersuite trait definitions need to be updated**
 * Ensured that dummy record is always created to avoid timing attack issues
 * Modified the dummy registration file to only contain the public key
   instead of the keypair
-  * **Breaking: existing `ServerSetup`s need to be updated**
-    ```rust
-    // Given `old` is a `ServerSetup` from `opaque-ke` v3.
-    let old_serialized = old.serialize();
-
-    type OldSeedLen = <<<OldCipherSuite as opaque_ke_3::CipherSuite>::OprfCs as voprf::CipherSuite>::Hash as OutputSizeUser>::OutputSize;
-    type OldSkLen = <<OldCipherSuite as opaque_ke_3::CipherSuite>::KeGroup as opaque_ke_3::key_exchange::group::KeGroup>::SkLen;
-
-    let (old_serialied_rest, old_fake_keypair_serialized): (
-        GenericArray<u8, Sum<OldSeedLen, OldSkLen>>,
-        _,
-    ) = old_serialized.split();
-
-    let old_fake_keypair =
-        KeyPair::<<OldCipherSuite as opaque_ke_3::CipherSuite>::KeGroup>::from_private_key_slice(
-            &old_fake_keypair_serialized,
-        )
-        .unwrap();
-    let old_fake_pk_serialized = old_fake_keypair.public().serialize();
-
-    let new_serialized = old_serialied_rest.concat(old_fake_pk_serialized);
-    // Given `NewCipherSuite` is a `CipherSuite` implementation equivalent to `OldCipherSuite`.
-    ServerSetup::<NewCipherSuite>::deserialize(&new_serialized).unwrap()
-    ```
+    * **Breaking: existing `ServerSetup`s need to be updated**
+      ```rust
+      // Given `old` is a `ServerSetup` from `opaque-ke` v3.
+      let old_serialized = old.serialize();
+  
+      type OldSeedLen = <<<OldCipherSuite as opaque_ke_3::CipherSuite>::OprfCs as voprf::CipherSuite>::Hash as OutputSizeUser>::OutputSize;
+      type OldSkLen = <<OldCipherSuite as opaque_ke_3::CipherSuite>::KeGroup as opaque_ke_3::key_exchange::group::KeGroup>::SkLen;
+  
+      let (old_serialied_rest, old_fake_keypair_serialized): (
+          GenericArray<u8, Sum<OldSeedLen, OldSkLen>>,
+          _,
+      ) = old_serialized.split();
+  
+      let old_fake_keypair =
+          KeyPair::<<OldCipherSuite as opaque_ke_3::CipherSuite>::KeGroup>::from_private_key_slice(
+              &old_fake_keypair_serialized,
+          )
+          .unwrap();
+      let old_fake_pk_serialized = old_fake_keypair.public().serialize();
+  
+      let new_serialized = old_serialied_rest.concat(old_fake_pk_serialized);
+      // Given `NewCipherSuite` is a `CipherSuite` implementation equivalent to `OldCipherSuite`.
+      ServerSetup::<NewCipherSuite>::deserialize(&new_serialized).unwrap()
+      ```
 * Added remote OPRF seed support
 * Replace remote private key trait with a state machine, facilitating async support.
 * Serde de/serialization formats have been simplified
-  * **Breaking: existing `ServerRegistration`s may need to be updated**
-    ```rust
-    // Given `old` is a `ServerRegistration` from `opaque-ke` v3.
-    let old_serialized = old.serialize();
-    // Given `NewCipherSuite` is a `CipherSuite` implementation equivalent to the old cipher suite.
-    ServerRegistration::<NewCipherSuite>::deserialize(&old_serialized).unwrap()
-    ```
-
+    * **Breaking: existing `ServerRegistration`s may need to be updated**
+      ```rust
+      // Given `old` is a `ServerRegistration` from `opaque-ke` v3.
+      let old_serialized = old.serialize();
+      // Given `NewCipherSuite` is a `CipherSuite` implementation equivalent to the old cipher suite.
+      ServerRegistration::<NewCipherSuite>::deserialize(&old_serialized).unwrap()
+      ```
 
 ## 3.0.0 (October 10, 2024)
+
 * Synced implementation with draft-irtf-cfrg-opaque-16
-  * **Breaking: protocol context string changed from `RFCXXXX` to `OPAQUEv1-`**
+    * **Breaking: protocol context string changed from `RFCXXXX` to `OPAQUEv1-`**
 * Dropped unmaintained json crate in favor of serde_json
 * Updated dependencies
 * Increased MSRV to 1.74
@@ -69,11 +114,12 @@
 * Adjusted key generation logic to be in line with commit 727b9ac of
   https://github.com/cfrg/draft-irtf-cfrg-opaque
 * Updated VOPRF to draft 19
-  * **Breaking: backwards-incompatible changes introduced in OPRF protocol**
+    * **Breaking: backwards-incompatible changes introduced in OPRF protocol**
 * Added P384 testing support
 * Renaming of X25519 to Curve25519
 
 ## 2.0.0 (September 21, 2022)
+
 * Synced implementation with draft-irtf-cfrg-opaque-10
 * Changed argon2 salt length to recommended value (16 bytes)
 * Fixed issue from 2.0.0-pre.2 not pinning voprf dependency correctly

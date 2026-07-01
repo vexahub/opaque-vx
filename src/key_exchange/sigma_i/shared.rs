@@ -16,24 +16,30 @@ use crate::serialization::SliceExt;
 
 /// Pre-hash of the message to be verified.
 #[derive_where(Clone, Debug, Eq, Hash, PartialEq, Zeroize)]
-#[derive_where(Copy; <H::OutputSize as ArrayLength<u8>>::ArrayType)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "")
 )]
+#[allow(dead_code)]
 pub struct PreHash<H: OutputSizeUser>(pub Output<H>);
 
-impl<H: OutputSizeUser> Deserialize for PreHash<H> {
+impl<H: OutputSizeUser> Deserialize for PreHash<H>
+where
+    H::OutputSize: ArrayLength,
+{
     fn deserialize_take(input: &mut &[u8]) -> Result<Self, ProtocolError> {
-        Ok(Self(input.take_array("pre-hash")?))
+        Ok(Self(input.take_array("pre-hash")?.into_ha0_4()))
     }
 }
 
-impl<H: OutputSizeUser> Serialize for PreHash<H> {
+impl<H: OutputSizeUser> Serialize for PreHash<H>
+where
+    H::OutputSize: ArrayLength,
+{
     type Len = H::OutputSize;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.0.clone()
+        GenericArray::from_slice(self.0.as_slice()).clone()
     }
 }
