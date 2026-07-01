@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) VexaHub and contributors.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-//
-// This source code is dual-licensed under either the MIT license found in the
-// LICENSE-MIT file in the root directory of this source tree or the Apache
-// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-// of this source tree. You may select, at your option, one of the above-listed
-// licenses.
 
 //! An implementation of the SIGMA-I key exchange protocol
 //!
@@ -25,7 +21,6 @@ use core::ops::Add;
 use derive_where::derive_where;
 use digest::block_api::{BlockSizeUser, CoreProxy, SmallBlockSizeUser};
 use digest::{Mac, Output, OutputSizeUser};
-use generic_array::sequence::Concat;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U256};
 use generic_array::{ArrayLength, GenericArray};
 use hmac::{KeyInit, SimpleHmac};
@@ -521,16 +516,11 @@ where
     type Len = Ke2StateLen<CS, SIG, KE>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        Concat::concat(
-            Concat::concat(
-                Concat::concat(
-                    self.client_s_pk.serialize(),
-                    GenericArray::from_slice(self.session_key.as_slice()).clone(),
-                ),
-                self.verify_state.serialize(),
-            ),
-            GenericArray::from_slice(self.expected_mac.as_slice()).clone(),
-        )
+        self.client_s_pk
+            .serialize()
+            .cat(GenericArray::from_slice(self.session_key.as_slice()).clone())
+            .cat(self.verify_state.serialize())
+            .cat(GenericArray::from_slice(self.expected_mac.as_slice()).clone())
     }
 }
 
@@ -601,9 +591,7 @@ where
     type Len = Sum<SIG::SignatureLen, OutputSize<KEH>>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        Concat::concat(
-            SIG::serialize_signature(&self.signature),
-            GenericArray::from_slice(self.mac.as_slice()).clone(),
-        )
+        SIG::serialize_signature(&self.signature)
+            .cat(GenericArray::from_slice(self.mac.as_slice()).clone())
     }
 }

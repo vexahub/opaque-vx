@@ -1,23 +1,18 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) VexaHub and contributors.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-//
-// This source code is dual-licensed under either the MIT license found in the
-// LICENSE-MIT file in the root directory of this source tree or the Apache
-// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-// of this source tree. You may select, at your option, one of the above-listed
-// licenses.
 
 //! Implementation for EC curves via [`elliptic_curve`] traits.
 
 use core::ops::Mul;
-use digest::OutputSizeUser;
-use digest::block_api::BlockSizeUser;
+
 use elliptic_curve::group::GroupEncoding;
 use elliptic_curve::point::NonIdentity;
 use elliptic_curve::sec1::{ModulusSize, ToSec1Point};
 use elliptic_curve::{
     CurveArithmetic, FieldBytesSize, Generate, NonZeroScalar, ProjectivePoint, Scalar, SecretKey,
 };
-use generic_array::typenum::{IsGreaterOrEqual, IsLess, IsLessOrEqual, Prod, True, U2, U256};
+use generic_array::typenum::U2;
 use generic_array::{ArrayLength, GenericArray};
 use rand::{CryptoRng, Rng};
 use voprf::Mode;
@@ -40,12 +35,6 @@ where
         > + ToSec1Point<Self>,
     // Bounds required by voprf::CipherSuite
     <Self as voprf::Group>::SecurityLevel: Mul<U2>,
-    <<Self as voprf::CipherSuite>::Hash as OutputSizeUser>::OutputSize: ArrayLength
-        + IsLess<U256>
-        + IsLessOrEqual<
-            <<Self as voprf::CipherSuite>::Hash as BlockSizeUser>::BlockSize,
-            Output = True,
-        > + IsGreaterOrEqual<Prod<<Self as voprf::Group>::SecurityLevel, U2>, Output = True>,
 {
     // We don't use `elliptic_curve::PublicKey` because it stores its internals in a
     // format ideal for serialization and not computation. This is inconsistent with
@@ -105,11 +94,8 @@ where
     ProjectivePoint<G>: GroupEncoding<
             Repr = hybrid_array::Array<u8, <FieldBytesSize<G> as ModulusSize>::CompressedPointSize>,
         > + ToSec1Point<G>,
+    // Bounds required by voprf::CipherSuite
     <G as voprf::Group>::SecurityLevel: Mul<U2>,
-    <<G as voprf::CipherSuite>::Hash as OutputSizeUser>::OutputSize: ArrayLength
-        + IsLess<U256>
-        + IsLessOrEqual<<<G as voprf::CipherSuite>::Hash as BlockSizeUser>::BlockSize, Output = True>
-        + IsGreaterOrEqual<Prod<<G as voprf::Group>::SecurityLevel, U2>, Output = True>,
 {
     fn diffie_hellman(
         &self,

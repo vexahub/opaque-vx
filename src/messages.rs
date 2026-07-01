@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) VexaHub and contributors.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-//
-// This source code is dual-licensed under either the MIT license found in the
-// LICENSE-MIT file in the root directory of this source tree or the Apache
-// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-// of this source tree. You may select, at your option, one of the above-listed
-// licenses.
 
 //! Contains the messages used for OPAQUE
 
@@ -12,7 +8,6 @@ use core::ops::Add;
 
 use derive_where::derive_where;
 use digest::Output;
-use generic_array::sequence::Concat;
 use generic_array::typenum::{Sum, Unsigned};
 use generic_array::{ArrayLength, GenericArray};
 use hybrid_array::Array;
@@ -34,7 +29,7 @@ use crate::keypair::PublicKey;
 use crate::opaque::{
     MaskedResponse, MaskedResponseLen, ServerLogin, ServerLoginStartResult, ServerSetup,
 };
-use crate::serialization::SliceExt;
+use crate::serialization::{ConcatExt, SliceExt};
 
 ////////////////////////////
 // High-level API Structs //
@@ -260,7 +255,7 @@ impl<CS: CipherSuite> RegistrationResponse<CS> {
             self.evaluation_element.value(),
         ));
 
-        elem.concat(self.server_s_pk.serialize())
+        elem.cat(self.server_s_pk.serialize())
     }
 
     /// Deserialization from bytes
@@ -302,13 +297,10 @@ impl<CS: CipherSuite> RegistrationUpload<CS> {
             ArrayLength + Add<EnvelopeLen<CS>>,
         RegistrationUploadLen<CS>: ArrayLength,
     {
-        Concat::concat(
-            Concat::concat(
-                self.client_s_pk.serialize(),
-                GenericArray::from_slice(self.masking_key.as_slice()).clone(),
-            ),
-            self.envelope.serialize(),
-        )
+        self.client_s_pk
+            .serialize()
+            .cat(GenericArray::from_slice(self.masking_key.as_slice()).clone())
+            .cat(self.envelope.serialize())
     }
 
     /// Deserialization from bytes
@@ -353,7 +345,7 @@ impl<CS: CipherSuite> CredentialRequest<CS> {
             self.blinded_element.value(),
         ));
 
-        elem.concat(self.ke1_message.serialize())
+        elem.cat(self.ke1_message.serialize())
     }
 
     /// Deserialization from bytes
@@ -413,13 +405,9 @@ impl<CS: CipherSuite> CredentialResponse<CS> {
             self.evaluation_element.value(),
         ));
 
-        Concat::concat(
-            Concat::concat(
-                Concat::concat(elem, self.masking_nonce),
-                self.masked_response.serialize(),
-            ),
-            self.ke2_message.serialize(),
-        )
+        elem.cat(self.masking_nonce)
+            .cat(self.masked_response.serialize())
+            .cat(self.ke2_message.serialize())
     }
 
     /// Deserialization from bytes

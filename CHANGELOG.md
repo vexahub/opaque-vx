@@ -29,6 +29,7 @@ Forked from [facebook/opaque-ke](https://github.com/facebook/opaque-ke/) at `4.1
 * Added **`cryptography`** to `categories` in `Cargo.toml`
 * Replaced `Hmac` with `SimpleHmac` throughout for `digest 0.11` compatibility
 * Replaced `bincode` with `postcard` for `no_std` serialization
+* Replaced license appendix in files while keeping original copyright
 * Re-exported `hybrid_array` from crate root
 * Updated `Hash` trait to remove `BlockSizeUser` bounds incompatible with `digest 0.11`
 * Updated `GroupEncoding Repr` bound to `hybrid_array::Array`

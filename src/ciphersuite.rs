@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) VexaHub and contributors.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-//
-// This source code is dual-licensed under either the MIT license found in the
-// LICENSE-MIT file in the root directory of this source tree or the Apache
-// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-// of this source tree. You may select, at your option, one of the above-listed
-// licenses.
 
 //! Defines the [`CipherSuite`] trait to specify the underlying primitives for
 //! OPAQUE
@@ -36,6 +32,8 @@ where
     Le<<<OprfHash<Self> as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
     // Envelope: Nonce + Hash
     // MaskedResponse: (Nonce + Hash) + KePk
+    // TODO: migrate fully to after hybrid-array v0.5 releases
+    // https://github.com/RustCrypto/hybrid-array/issues/66
     OutputSize<OprfHash<Self>>: Add<NonceLen> + ArrayLength,
     Sum<OutputSize<OprfHash<Self>>, NonceLen>: ArrayLength + Add<<KeGroup<Self> as Group>::PkLen>,
     MaskedResponseLen<Self>: ArrayLength,

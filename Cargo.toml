@@ -68,7 +68,7 @@ serde = { version = "1", default-features = false, features = [
     "derive",
 ], optional = true }
 subtle = { version = "2.6", default-features = false }
-voprf = { package = "voprf-vx", version = "1.0.0-pre.0", default-features = false, features = [
+voprf = { package = "voprf-vx", version = "1.0.0-pre.1", default-features = false, features = [
     "danger",
 ] }
 zeroize = { version = "1.9", features = ["zeroize_derive"] }

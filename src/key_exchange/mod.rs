@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) VexaHub and contributors.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-//
-// This source code is dual-licensed under either the MIT license found in the
-// LICENSE-MIT file in the root directory of this source tree or the Apache
-// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-// of this source tree. You may select, at your option, one of the above-listed
-// licenses.
 
 //! Includes instantiations of key exchange protocols used in the login step for
 //! OPAQUE
@@ -22,7 +18,6 @@ use core::ops::Add;
 use derive_where::derive_where;
 use digest::Output;
 use digest::block_api::{CoreProxy, SmallBlockSizeUser};
-use generic_array::sequence::Concat;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U2, U256};
 use generic_array::{ArrayLength, GenericArray};
 use hybrid_array::Array;
@@ -39,7 +34,7 @@ use crate::key_exchange::group::Group;
 use crate::key_exchange::shared::{NonceLen, STR_CONTEXT};
 use crate::keypair::{PrivateKey, PublicKey};
 use crate::opaque::{Identifiers, MaskedResponse, MaskedResponseLen};
-use crate::serialization::{SliceExt, i2osp};
+use crate::serialization::{ConcatExt, SliceExt, i2osp};
 
 /// The key exchange trait.
 pub trait KeyExchange
@@ -237,10 +232,8 @@ where
         )
         .clone();
 
-        Concat::concat(
-            Concat::concat(elem, self.masking_nonce),
-            self.masked_response.serialize(),
-        )
+        elem.cat(self.masking_nonce)
+            .cat(self.masked_response.serialize())
     }
 }
 

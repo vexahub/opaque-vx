@@ -1,17 +1,12 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) VexaHub and contributors.
 // Copyright (c) Meta Platforms, Inc. and affiliates.
-//
-// This source code is dual-licensed under either the MIT license found in the
-// LICENSE-MIT file in the root directory of this source tree or the Apache
-// License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-// of this source tree. You may select, at your option, one of the above-listed
-// licenses.
 
 use core::ops::Add;
 
 use derive_where::derive_where;
 use digest::block_api::{CoreProxy, SmallBlockSizeUser};
 use digest::{Digest, Mac, Output, OutputSizeUser, Update};
-use generic_array::sequence::Concat;
 use generic_array::typenum::{IsLess, Le, NonZero, Sum, U1, U2, U32, U256, Unsigned};
 use generic_array::{ArrayLength, GenericArray};
 use hkdf::SimpleHkdf as Hkdf;
@@ -28,7 +23,7 @@ use crate::errors::{InternalError, ProtocolError};
 use crate::hash::{Hash, OutputSize, ProxyHash};
 use crate::key_exchange::group::Group;
 use crate::keypair::{KeyPair, PrivateKey, PublicKey};
-use crate::serialization::{SliceExt, UpdateExt, i2osp};
+use crate::serialization::{ConcatExt, SliceExt, UpdateExt, i2osp};
 
 ///////////////
 // Constants //
@@ -421,9 +416,7 @@ where
     type Len = Sum<G::SkLen, NonceLen>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        let a = self.client_e_sk.serialize();
-
-        GenericArray::concat(a, self.client_nonce)
+        self.client_e_sk.serialize().cat(self.client_nonce)
     }
 }
 
@@ -445,7 +438,7 @@ where
     type Len = Sum<NonceLen, G::PkLen>;
 
     fn serialize(&self) -> GenericArray<u8, Self::Len> {
-        self.client_nonce.concat(self.client_e_pk.serialize())
+        self.client_nonce.cat(self.client_e_pk.serialize())
     }
 }
 
@@ -490,6 +483,6 @@ where
     Ke1MessageIterLen<G>: ArrayLength,
 {
     pub(crate) fn serialize(&self) -> GenericArray<u8, Ke1MessageIterLen<G>> {
-        self.client_nonce.concat(self.client_e_pk.clone())
+        self.client_nonce.cat(self.client_e_pk.clone())
     }
 }
