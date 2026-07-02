@@ -14,7 +14,7 @@ name = "opaque-vx"
 readme = "README.md"
 repository = "https://github.com/vexahub/opaque-vx"
 rust-version = "1.90"
-version = "1.0.0-pre.1"
+version = "1.0.0-rc.0"
 
 [features]
 argon2 = ["dep:argon2"]
@@ -48,7 +48,7 @@ curve25519-dalek = { version = "5.0.0-rc", default-features = false, features = 
 derive-where = { version = "1.6", features = ["zeroize-on-drop"] }
 digest = { version = "0.11", features = ["zeroize"] }
 displaydoc = { version = "0.2", default-features = false }
-ecdsa = { version = "0.17.0-rc.23", default-features = false, features = [
+ecdsa = { version = "0.17", default-features = false, features = [
     "algorithm",
 ], optional = true }
 ed25519-dalek = { version = "3.0.0-rc", default-features = false, features = [
@@ -69,7 +69,7 @@ serde = { version = "1", default-features = false, features = [
     "derive",
 ], optional = true }
 subtle = { version = "2.6", default-features = false }
-voprf = { package = "voprf-vx", version = "1.0.0-pre.1", default-features = false, features = [
+voprf = { package = "voprf-vx", version = "1.0.0-rc", default-features = false, features = [
     "danger",
 ] }
 zeroize = { version = "1.9", features = ["zeroize_derive"] }
@@ -85,18 +85,18 @@ criterion = "0.8"
 cryptoki = "0.12"
 elliptic-curve = { version = "0.14", features = ["alloc", "pkcs8"] }
 hex = "0.4"
-p256 = { version = "0.14.0-rc.15", default-features = false, features = [
+p256 = { version = "0.14.0-rc", default-features = false, features = [
     "ecdsa",
     "hash2curve",
     "pkcs8",
     "oprf",
 ] }
-p384 = { version = "0.14.0-rc.15", default-features = false, features = [
+p384 = { version = "0.14.0-rc", default-features = false, features = [
     "hash2curve",
     "pkcs8",
     "oprf",
 ] }
-p521 = { version = "0.14.0-rc.15", default-features = false, features = [
+p521 = { version = "0.14.0-rc", default-features = false, features = [
     "hash2curve",
     "pkcs8",
     "oprf",

@@ -20,7 +20,7 @@ OPAQUE is a PKI-free aPAKE that is secure against pre-computation attacks and ca
 Documentation
 -------------
 
-The API can be found [here](https://docs.rs/opaque-ke-vx/) along with an example for usage. More examples can be found
+The API can be found [here](https://docs.rs/opaque-vx/) along with an example for usage. More examples can be found
 in
 the [examples](./examples) directory.
 
@@ -30,7 +30,7 @@ Installation
 Add the following line to the dependencies of your `Cargo.toml`:
 
 ```
-opaque-ke = { package = "opaque-vx", version = "1.0.0-pre.0" }
+opaque-ke = { package = "opaque-vx", version = "1.0.0-rc.0" }
 ```
 
 ### Minimum Supported Rust Version

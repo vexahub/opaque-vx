@@ -1,12 +1,19 @@
 # Changelog
 
-## 1.0.0-pre.1 (July 1, 2026)
+## 1.0.0-rc.0 (July 3, 2026)
+
+* Fixed doc showing incorrect MSRV
+* Fixed readme incorrect doc link
+* Bump `ecdsa` to `0.17`
+* Bump `voprf-vx` to `1.0.0-rc`
+
+## 1.0.0-pre.1 (July 2, 2026)
 
 * Fixed README package name
 * Implement `zeroize` feature on `argon2`, `ed25519-dalek`, `hmac`, `chacha20poly1305` and `sha2`
 * Removed `rand_core` dependency to use it through `rand` re-export
 
-## 1.0.0-pre.0 (June 29, 2026)
+## 1.0.0-pre.0 (July 1, 2026)
 
 Forked from [facebook/opaque-ke](https://github.com/facebook/opaque-ke/) at `4.1.0-pre.2`.
 
