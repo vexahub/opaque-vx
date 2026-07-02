@@ -429,8 +429,8 @@ mod test {
     use std::iter;
 
     use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+    use rand::rand_core::UnwrapErr;
     use rand::rngs::SysRng;
-    use rand_core::UnwrapErr;
 
     use super::*;
 

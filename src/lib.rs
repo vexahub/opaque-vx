@@ -64,7 +64,7 @@
 //! # }
 //! use rand::Rng;
 //! use rand::rngs::SysRng;
-//! use rand_core::UnwrapErr;
+//! use rand::rand_core::UnwrapErr;
 //!
 //! let mut rng = UnwrapErr(SysRng);
 //! let server_setup = ServerSetup::<Default>::new(&mut rng);
@@ -122,7 +122,7 @@
 //! use opaque_vx::ClientRegistration;
 //! use rand::Rng;
 //! use rand::rngs::SysRng;
-//! use rand_core::UnwrapErr;
+//! use rand::rand_core::UnwrapErr;
 //!
 //! let mut client_rng = UnwrapErr(SysRng);
 //! let client_registration_start_result =
@@ -159,7 +159,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -207,7 +207,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -256,7 +256,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -308,7 +308,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! use opaque_vx::ClientLogin;
 //!
 //! let mut client_rng = UnwrapErr(SysRng);
@@ -345,7 +345,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -416,7 +416,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -474,7 +474,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -572,7 +572,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -670,7 +670,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -783,7 +783,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -830,7 +830,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -888,7 +888,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -948,7 +948,7 @@
 //! #     type Ksf = opaque_vx::ksf::Identity;
 //! # }
 //! # use rand::{rngs::SysRng, Rng};
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # let mut client_rng = UnwrapErr(SysRng);
 //! # let client_registration_start_result = ClientRegistration::<Default>::start(
 //! #     &mut client_rng,
@@ -1021,7 +1021,7 @@
 //! # use generic_array::{GenericArray, typenum::U0};
 //! # use opaque_vx::{CipherSuite, ClientLogin, ClientRegistration, ClientRegistrationFinishParameters, ServerRegistration, keypair::{PrivateKey, PublicKey}, key_exchange::{KeyExchange, group::Group, tripledh::DiffieHellman}};
 //! # use rand::rngs::SysRng;
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //!
 //! type Ristretto255 = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Group;
 //! # struct Default;
@@ -1118,7 +1118,7 @@
 //! # use opaque_vx::{CipherSuite, ClientLogin, ClientRegistration, ClientRegistrationFinishParameters, keypair::{PrivateKey, PublicKey}, key_exchange::{KeyExchange, group::Group, tripledh::DiffieHellman}};
 //! # use rand::rngs::SysRng;
 //! # use rand::Rng;
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //!
 //! type Ristretto255 = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Group;
 //! # type Hash = <<Default as CipherSuite>::KeyExchange as KeyExchange>::Hash;
@@ -1277,7 +1277,7 @@
 //! # use opaque_vx::errors::ProtocolError;
 //! # use rand::rngs::SysRng;
 //! # use rand::Rng;
-//! # use rand_core::UnwrapErr;
+//! # use rand::rand_core::UnwrapErr;
 //! # use std::default::Default;
 //! # #[cfg(feature = "argon2")]
 //! # {

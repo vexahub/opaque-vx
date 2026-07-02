@@ -7,8 +7,8 @@ extern crate criterion;
 
 use criterion::Criterion;
 use opaque_vx::*;
+use rand::rand_core::UnwrapErr;
 use rand::rngs::SysRng;
-use rand_core::UnwrapErr;
 
 #[cfg(feature = "ristretto255")]
 static SUFFIX: &str = "ristretto255";

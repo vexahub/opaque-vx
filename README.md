@@ -30,12 +30,12 @@ Installation
 Add the following line to the dependencies of your `Cargo.toml`:
 
 ```
-opaque-ke = { package = "opaque-ke-vx", version = "1.0.0-pre.0" }
+opaque-ke = { package = "opaque-vx", version = "1.0.0-pre.0" }
 ```
 
 ### Minimum Supported Rust Version
 
-Rust **1.89** or higher.
+Rust **1.90** or higher.
 
 Audit
 -----

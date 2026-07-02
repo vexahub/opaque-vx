@@ -15,9 +15,9 @@ use generic_array::{ArrayLength, GenericArray};
 #[cfg(feature = "kem")]
 use ml_kem::MlKem768;
 use rand::SeedableRng;
+use rand::rand_core::UnwrapErr;
 use rand::rngs::SysRng;
 use rand_chacha::ChaCha20Rng;
-use rand_core::UnwrapErr;
 use serde_json::Value;
 use subtle::ConstantTimeEq;
 use voprf::Group as _;

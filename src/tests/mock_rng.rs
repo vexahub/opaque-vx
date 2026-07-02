@@ -6,7 +6,7 @@ use core::cmp::min;
 use std::vec::Vec;
 
 use core::convert::Infallible;
-use rand_core::{TryCryptoRng, TryRng};
+use rand::rand_core::{TryCryptoRng, TryRng};
 
 /// A simple implementation of `Rng` for testing purposes.
 ///

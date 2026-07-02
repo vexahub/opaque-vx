@@ -35,7 +35,7 @@ use opaque_vx::{
     CredentialResponse, RegistrationRequest, RegistrationResponse, RegistrationUpload, ServerLogin,
     ServerLoginParameters, ServerRegistration, ServerSetup,
 };
-use rand_core::UnwrapErr;
+use rand::rand_core::UnwrapErr;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory;

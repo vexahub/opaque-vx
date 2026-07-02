@@ -307,8 +307,8 @@ mod tests {
         ServerRegistrationStartResult, ServerSetup,
     };
     use hkdf::Hkdf;
+    use rand::rand_core::UnwrapErr;
     use rand::rngs::SysRng;
-    use rand_core::UnwrapErr;
 
     macro_rules! test {
         ($mod:ident, $point:ty) => {

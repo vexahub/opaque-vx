@@ -26,8 +26,8 @@ use digest::OutputSizeUser;
 use generic_array::typenum::Sum;
 use generic_array::{ArrayLength, GenericArray};
 use rand::Rng;
+use rand::rand_core::UnwrapErr;
 use rand::rngs::SysRng;
-use rand_core::UnwrapErr;
 use serde_json::Value;
 
 #[allow(non_snake_case)]

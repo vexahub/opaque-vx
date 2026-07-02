@@ -12,8 +12,8 @@ use generic_array::typenum::{Sum, Unsigned};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use rand::Rng;
+use rand::rand_core::UnwrapErr;
 use rand::rngs::SysRng;
-use rand_core::UnwrapErr;
 use voprf::Group as _;
 
 use crate::ciphersuite::{CipherSuite, KeGroup, OprfGroup, OprfHash};

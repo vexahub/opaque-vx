@@ -111,8 +111,8 @@ fn ecdsa() {
     use p256::ecdsa::signature::RandomizedDigestSigner;
     use p256::ecdsa::{Signature, SigningKey, VerifyingKey};
     use p256::{NistP256, PublicKey};
+    use rand::rand_core::UnwrapErr;
     use rand::rngs::SysRng;
-    use rand_core::UnwrapErr;
     use sha2::Sha256;
 
     use crate::tests::mock_rng::CycleRng;

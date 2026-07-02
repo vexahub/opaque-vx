@@ -116,7 +116,7 @@ pub trait KemCoreWrapper {
 /// which is required by `ml-kem 0.3.x`.
 struct RngCompat<'a, R>(&'a mut R);
 
-impl<R: Rng> rand_core::TryRng for RngCompat<'_, R> {
+impl<R: Rng> rand::rand_core::TryRng for RngCompat<'_, R> {
     type Error = core::convert::Infallible;
 
     fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
@@ -133,7 +133,7 @@ impl<R: Rng> rand_core::TryRng for RngCompat<'_, R> {
     }
 }
 
-impl<R: Rng + CryptoRng> rand_core::TryCryptoRng for RngCompat<'_, R> {}
+impl<R: Rng + CryptoRng> rand::rand_core::TryCryptoRng for RngCompat<'_, R> {}
 
 type RcEncapsulationKeyLen<K> = <<K as MlKemTrait>::EncapsulationKey as KeySizeUser>::KeySize;
 #[allow(deprecated)]
