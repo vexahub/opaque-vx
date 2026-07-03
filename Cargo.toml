@@ -38,11 +38,11 @@ serde = [
 std = ["dep:getrandom", "rand/std"]
 
 [dependencies]
-argon2 = { version = "0.6.0-rc", default-features = false, features = [
+argon2 = { version = "0.6.0-rc.8", default-features = false, features = [
     "zeroize",
     "alloc",
 ], optional = true }
-curve25519-dalek = { version = "5.0.0-rc", default-features = false, features = [
+curve25519-dalek = { version = "5.0.0-rc.1", default-features = false, features = [
     "zeroize",
 ], optional = true }
 derive-where = { version = "1.6", features = ["zeroize-on-drop"] }
@@ -51,7 +51,7 @@ displaydoc = { version = "0.2", default-features = false }
 ecdsa = { version = "0.17", default-features = false, features = [
     "algorithm",
 ], optional = true }
-ed25519-dalek = { version = "3.0.0-rc", default-features = false, features = [
+ed25519-dalek = { version = "3.0.0-rc.1", default-features = false, features = [
     "zeroize",
     "digest",
     "hazmat",
@@ -69,7 +69,7 @@ serde = { version = "1", default-features = false, features = [
     "derive",
 ], optional = true }
 subtle = { version = "2.6", default-features = false }
-voprf = { package = "voprf-vx", version = "1.0.0-rc", default-features = false, features = [
+voprf = { package = "voprf-vx", version = "1.0.0-rc.1", default-features = false, features = [
     "danger",
 ] }
 zeroize = { version = "1.9", features = ["zeroize_derive"] }
@@ -85,18 +85,18 @@ criterion = "0.8"
 cryptoki = "0.12"
 elliptic-curve = { version = "0.14", features = ["alloc", "pkcs8"] }
 hex = "0.4"
-p256 = { version = "0.14.0-rc", default-features = false, features = [
+p256 = { version = "0.14.0-rc.15", default-features = false, features = [
     "ecdsa",
     "hash2curve",
     "pkcs8",
     "oprf",
 ] }
-p384 = { version = "0.14.0-rc", default-features = false, features = [
+p384 = { version = "0.14.0-rc.15", default-features = false, features = [
     "hash2curve",
     "pkcs8",
     "oprf",
 ] }
-p521 = { version = "0.14.0-rc", default-features = false, features = [
+p521 = { version = "0.14.0-rc.15", default-features = false, features = [
     "hash2curve",
     "pkcs8",
     "oprf",

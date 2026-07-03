@@ -5,7 +5,12 @@
 * Fixed doc showing incorrect MSRV
 * Fixed readme incorrect doc link
 * Bump `ecdsa` to `0.17`
-* Bump `voprf-vx` to `1.0.0-rc`
+* Bump `voprf-vx` to `1.0.0-rc.1`
+* Added `ZeroizeOnDrop` bound to `Hash` trait
+* Replaced manual `Drop` impls on `Ke2Builder` and `KemKe2Builder` with `#[derive_where(ZeroizeOnDrop)]`
+* Replaced deprecated `ExpandedKeyEncoding` with seed-based serialization (`KeyInit` / `KeyExport`) for KEM decapsulation keys
+* Fixed deserialization of `voprf` types to pass exact-length slices (compatibility with `voprf` trailing bytes rejection)
+* Regenerated test vectors
 
 ## 1.0.0-pre.1 (July 2, 2026)
 

@@ -289,8 +289,12 @@ impl<CS: CipherSuite> ClientRegistration<CS> {
 
     /// Deserialization from bytes
     pub fn deserialize(mut input: &[u8]) -> Result<Self, ProtocolError> {
-        let oprf_client = OprfClient::deserialize(input)?;
-        input = &input[OprfClientLen::<CS::OprfCs>::USIZE..];
+        let client_len = OprfClientLen::<CS::OprfCs>::USIZE;
+        if input.len() < client_len {
+            return Err(ProtocolError::SerializationError);
+        }
+        let oprf_client = OprfClient::deserialize(&input[..client_len])?;
+        input = &input[client_len..];
 
         let blinded_element = BlindedElement::deserialize(input)?;
 
@@ -486,8 +490,12 @@ impl<CS: CipherSuite> ClientLogin<CS> {
         <CS::KeyExchange as KeyExchange>::KE1Message: Deserialize + Serialize,
         <CS::KeyExchange as KeyExchange>::KE1State: Deserialize + Serialize,
     {
-        let oprf_client = OprfClient::deserialize(input)?;
-        input = &input[OprfClientLen::<CS::OprfCs>::USIZE..];
+        let client_len = OprfClientLen::<CS::OprfCs>::USIZE;
+        if input.len() < client_len {
+            return Err(ProtocolError::SerializationError);
+        }
+        let oprf_client = OprfClient::deserialize(&input[..client_len])?;
+        input = &input[client_len..];
 
         Ok(Self {
             oprf_client,

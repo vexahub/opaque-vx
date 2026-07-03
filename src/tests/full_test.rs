@@ -738,16 +738,12 @@ fn generate_test_vectors() -> Result<(), ProtocolError> {
     #[rustfmt::skip]
     output.push_str(
         "\
+        // SPDX-License-Identifier: MIT OR Apache-2.0\n\
+        // Copyright (c) VexaHub and contributors.\n\
         // Copyright (c) Meta Platforms, Inc. and affiliates.\n\
         //\n\
-        // This source code is dual-licensed under either the MIT license found in the\n\
-        // LICENSE-MIT file in the root directory of this source tree or the Apache\n\
-        // License, Version 2.0 found in the LICENSE-APACHE file in the root directory\n\
-        // of this source tree. You may select, at your option, one of the above-listed\n\
-        // licenses.\n\
-        //\n\
         // To regenerate these test vectors, run:\n\
-        // FULL_TEST_VECTORS_FILE=src/tests/full_test_vectors.rs cargo test --features curve25519,ecdsa,ed25519 -- generate_test_vectors\n\
+        // FULL_TEST_VECTORS_FILE=src/tests/full_test_vectors.rs cargo test --features curve25519,ecdsa,ed25519,kem -- generate_test_vectors\n\
         \n\
         #![allow(clippy::duplicated_attributes)]\n\
         \n",

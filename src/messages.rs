@@ -233,6 +233,10 @@ impl<CS: CipherSuite> RegistrationRequest<CS> {
 
     /// Deserialization from bytes
     pub fn deserialize(input: &[u8]) -> Result<Self, ProtocolError> {
+        let elem_len = <OprfGroup<CS> as voprf::Group>::ElemLen::USIZE;
+        if input.len() < elem_len {
+            return Err(ProtocolError::SerializationError);
+        }
         Ok(Self {
             blinded_element: BlindedElement::deserialize(input)?,
         })
@@ -260,8 +264,12 @@ impl<CS: CipherSuite> RegistrationResponse<CS> {
 
     /// Deserialization from bytes
     pub fn deserialize(mut input: &[u8]) -> Result<Self, ProtocolError> {
-        let evaluation_element = EvaluationElement::deserialize(input)?;
-        input = &input[EvaluationElementLen::<CS::OprfCs>::USIZE..];
+        let elem_len = EvaluationElementLen::<CS::OprfCs>::USIZE;
+        if input.len() < elem_len {
+            return Err(ProtocolError::SerializationError);
+        }
+        let evaluation_element = EvaluationElement::deserialize(&input[..elem_len])?;
+        input = &input[elem_len..];
 
         Ok(Self {
             evaluation_element,
@@ -360,8 +368,12 @@ impl<CS: CipherSuite> CredentialRequest<CS> {
     where
         <CS::KeyExchange as KeyExchange>::KE1Message: Deserialize,
     {
-        let blinded_element = BlindedElement::deserialize(input)?;
-        *input = &input[BlindedElementLen::<CS::OprfCs>::USIZE..];
+        let elem_len = BlindedElementLen::<CS::OprfCs>::USIZE;
+        if input.len() < elem_len {
+            return Err(ProtocolError::SerializationError);
+        }
+        let blinded_element = BlindedElement::deserialize(&input[..elem_len])?;
+        *input = &input[elem_len..];
 
         Ok(Self {
             blinded_element,
@@ -415,8 +427,12 @@ impl<CS: CipherSuite> CredentialResponse<CS> {
     where
         <CS::KeyExchange as KeyExchange>::KE2Message: Deserialize,
     {
-        let evaluation_element = EvaluationElement::deserialize(input)?;
-        input = &input[EvaluationElementLen::<CS::OprfCs>::USIZE..];
+        let elem_len = EvaluationElementLen::<CS::OprfCs>::USIZE;
+        if input.len() < elem_len {
+            return Err(ProtocolError::SerializationError);
+        }
+        let evaluation_element = EvaluationElement::deserialize(&input[..elem_len])?;
+        input = &input[elem_len..];
 
         Ok(Self {
             evaluation_element,

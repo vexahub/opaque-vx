@@ -14,7 +14,6 @@ use generic_array::typenum::{IsLess, Le, NonZero, Sum, U256};
 use generic_array::{ArrayLength, GenericArray};
 use rand::{CryptoRng, Rng};
 use subtle::{ConstantTimeEq, CtOption};
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::{
     Deserialize, GenerateKe1Result, GenerateKe2Result, GenerateKe3Result, KeyExchange, Serialize,
@@ -69,7 +68,7 @@ pub struct Ke2State<H: OutputSizeUser> {
         serialize = "H: serde::Serialize, PublicKey<G>: serde::Serialize",
     ))
 )]
-#[derive_where(Clone)]
+#[derive_where(Clone, ZeroizeOnDrop)]
 #[derive_where(Debug, Eq, Hash, PartialEq; H, PublicKey<G>)]
 pub struct Ke2Builder<G: Group, H: Hash>
 where
@@ -80,7 +79,9 @@ where
 {
     server_nonce: GenericArray<u8, NonceLen>,
     transcript_hasher: H,
+    #[derive_where(skip(Zeroize))]
     client_e_pk: PublicKey<G>,
+    #[derive_where(skip(Zeroize))]
     server_e_pk: PublicKey<G>,
     shared_secret_1: GenericArray<u8, G::PkLen>,
     shared_secret_3: GenericArray<u8, G::PkLen>,
@@ -350,40 +351,6 @@ where
 
         sk.cat(mac)
     }
-}
-
-/// TODO: implement via derive after `Hash` gets `Zeroize` support.
-impl<G: Group, H: Hash> Drop for Ke2Builder<G, H>
-where
-    H::Core: ProxyHash,
-    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
-    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
-    OutputSize<H>: ArrayLength,
-{
-    fn drop(&mut self) {
-        let Self {
-            server_nonce,
-            transcript_hasher,
-            client_e_pk: _,
-            server_e_pk: _,
-            shared_secret_1,
-            shared_secret_3,
-        } = self;
-
-        server_nonce.zeroize();
-        digest::Reset::reset(transcript_hasher);
-        shared_secret_1.zeroize();
-        shared_secret_3.zeroize();
-    }
-}
-
-impl<G: Group, H: Hash> ZeroizeOnDrop for Ke2Builder<G, H>
-where
-    H::Core: ProxyHash,
-    <<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
-    Le<<<H as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize, U256>: NonZero,
-    OutputSize<H>: ArrayLength,
-{
 }
 
 impl<G: Group, H: Hash> Deserialize for Ke2Message<G, H>

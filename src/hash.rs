@@ -48,6 +48,7 @@ pub trait Hash:
     + FixedOutputReset
     + CoreProxy
     + Clone
+    + zeroize::ZeroizeOnDrop
 where
     <Self as CoreProxy>::Core: ProxyHash,
     <<Self as CoreProxy>::Core as SmallBlockSizeUser>::_BlockSize: IsLess<U256>,
@@ -64,7 +65,8 @@ impl<
         + BlockSizeUser
         + FixedOutputReset
         + CoreProxy
-        + Clone,
+        + Clone
+        + zeroize::ZeroizeOnDrop,
 > Hash for T
 where
     <T as CoreProxy>::Core: ProxyHash,
