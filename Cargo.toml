@@ -69,7 +69,7 @@ serde = { version = "1", default-features = false, features = [
     "derive",
 ], optional = true }
 subtle = { version = "2.6", default-features = false }
-voprf = { package = "voprf-vx", version = "1.0.0-rc.1", default-features = false, features = [
+voprf = { package = "voprf-vx", version = "1", default-features = false, features = [
     "danger",
 ] }
 zeroize = { version = "1.9", features = ["zeroize_derive"] }
@@ -96,7 +96,7 @@ p384 = { version = "0.14", default-features = false, features = [
     "pkcs8",
     "oprf",
 ] }
-p521 = { version = "0.14.0-rc.15", default-features = false, features = [
+p521 = { version = "0.14", default-features = false, features = [
     "hash2curve",
     "pkcs8",
     "oprf",
