@@ -1373,6 +1373,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), deny(unsafe_code))]
 #![warn(clippy::cargo, clippy::doc_markdown, missing_docs, rustdoc::all)]
+#![allow(clippy::multiple_crate_versions)] // TODO: Remove cause of dalek crates and derive...
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![allow(type_alias_bounds)]
 

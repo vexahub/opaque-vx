@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0 (September 3, 2026)
+
+* Updated dependencies to stable releases:
+  * `voprf-vx`: `1.0.0-rc.1` to `1.0.0`
+  * `argon2`: to `0.6`
+  * `p521`: to `0.14` (dev-dependency)
+* Allowed `clippy::multiple_crate_versions` lint (transitive `syn` 2/3 coexistence in crypto ecosystem)
+* Fixed formatting in `sigma_i/message.rs` (clippy)
+
 ## 1.0.0-rc.0 (July 3, 2026)
 
 * Fixed doc showing incorrect MSRV

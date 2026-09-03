@@ -19,7 +19,7 @@ fn parse_vector_types(input: &str) -> String {
     for (count, caps) in (1..).zip(re.captures_iter(input)) {
         let vector_type = format!(
             "\"{}\": [\n {} \n]",
-            &caps["type"].trim(),
+            caps["type"].trim(),
             parse_ciphersuites(chunks[count])
         );
         vector_types.push(vector_type);
